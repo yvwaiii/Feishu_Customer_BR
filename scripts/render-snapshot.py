@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -179,6 +181,19 @@ def render(data, out_dir):
 <hr/><p><b>说明：</b>仅使用已确认的主租户 C360 快照字段。文档不包含无来源数据、对标、因果推断或销售建议。</p>'''
     (out_dir / "document.xml").write_text(doc)
     (out_dir / "manifest.json").write_text(json.dumps({"mode": "c360_snapshot", "fields": list(FIELD_SPECS), "insights": ins}, ensure_ascii=False, indent=2))
+    receipt = {
+        "generator": "customer-business-review/render-snapshot.py",
+        "content_version": "2.7.1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "c360_snapshot",
+        "field_count": len(FIELD_SPECS),
+        "input_sha256": hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+        "board_sha256": hashlib.sha256(svg_path.read_bytes()).hexdigest(),
+        "document_sha256": hashlib.sha256((out_dir / "document.xml").read_bytes()).hexdigest(),
+        "local_audit": "pending",
+        "remote_audit": "pending"
+    }
+    (out_dir / "delivery-receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2))
 
 
 def main():

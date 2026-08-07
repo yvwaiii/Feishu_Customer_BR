@@ -1,7 +1,7 @@
 {
   "skill_name": "customer-business-review",
-  "content_version": "2.7.0",
-  "minimum_skillhub_version": "1.0.4",
+  "content_version": "2.7.1",
+  "minimum_skillhub_version": "1.0.5",
   "required_files": [
     "SKILL.md",
     "README.md",
@@ -9,6 +9,7 @@
     "references/deterministic-delivery.md",
     "scripts/render-snapshot.py",
     "scripts/audit-snapshot.py",
+    "scripts/preflight-release.py",
     "scripts/validate-snapshot-input.py",
     "scripts/bootstrap-lark-c360.sh",
     "scripts/cache-c360-artifact.sh"
@@ -16,6 +17,7 @@
   "delivery_contract": {
     "snapshot_renderer": "scripts/render-snapshot.py",
     "snapshot_auditor": "scripts/audit-snapshot.py",
+    "required_receipt": "delivery-receipt.json",
     "remote_board_image_nodes": 0,
     "remote_board_icon_groups_min": 7
   }

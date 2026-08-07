@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -25,6 +26,7 @@ def main():
     p.add_argument("--xml", required=True)
     p.add_argument("--remote-doc-json")
     p.add_argument("--remote-board-raw")
+    p.add_argument("--receipt")
     args = p.parse_args()
 
     data = json.loads(Path(args.input).read_text())
@@ -103,6 +105,23 @@ def main():
 
     if errors:
         fail(errors)
+    if args.receipt:
+        receipt_path = Path(args.receipt)
+        receipt = json.loads(receipt_path.read_text())
+        expected = {
+            "board_sha256": hashlib.sha256(Path(args.svg).read_bytes()).hexdigest(),
+            "document_sha256": hashlib.sha256(Path(args.xml).read_bytes()).hexdigest(),
+        }
+        for key, value in expected.items():
+            if receipt.get(key) != value:
+                fail([f"执行回执哈希不匹配：{key}"])
+        receipt["local_audit"] = "passed"
+        receipt["remote_audit"] = "passed" if args.remote_doc_json and args.remote_board_raw else "pending"
+        if args.remote_board_raw:
+            receipt["remote_node_types"] = dict(Counter(
+                node.get("type") for node in json.loads(Path(args.remote_board_raw).read_text()).get("nodes", [])
+            ))
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2))
     print(json.dumps({"ok": True, "message": "快照产物审计通过"}, ensure_ascii=False))
 
 

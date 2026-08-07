@@ -1,6 +1,6 @@
 ---
 name: "customer-business-review"
-version: "2.7.0"
+version: "2.7.1"
 description: "生成客户飞书整体使用情况回顾与数据洞察画板。用户提到回访、BR、Business Review、客户复盘、使用回顾或主租户近 180 天分析等相近意图时自动调用。"
 ---
 
@@ -45,7 +45,7 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 3. 先补齐 C360 七模块固定字段，并确认是否足以生成当前使用快照。
 4. 若运行环境可访问 Aeolus，或用户提供 Aeolus 导出，则用主租户 **F 码**获取滚动 180 天累计、日均和对比期指标；不得用客户名或租户名替代 F 码。
 5. 建立 coverage matrix，按七模块组合分析全部有效指标。
-6. C360 快照模式必须按 [确定性交付流水线](references/deterministic-delivery.md) 生成；禁止 Agent 手写 SVG、单位或洞见。
+6. C360 快照模式必须按 [确定性交付流水线](references/deterministic-delivery.md) 生成；禁止 Agent 手写 SVG、单位或洞见。没有 `delivery-receipt.json` 时禁止创建文档或返回交付链接。
 7. 回读画板和文档，确认数据、结构、口径和视觉无误后结束。
 
 若任务方声明 C360 数据位于旧 `/home/gem/.aily/workdir/...` 路径，但当前沙箱不可读：先解析 `~/.aily/workspace` 持久化副本；不存在时安装/登录 C360 并重新查询。不得因旧任务路径失效而停止。

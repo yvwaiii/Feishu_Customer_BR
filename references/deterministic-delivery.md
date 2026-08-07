@@ -38,6 +38,7 @@ python3 "$SKILL_ROOT/scripts/render-snapshot.py" \
 - `generated/board.svg`
 - `generated/document.xml`
 - `generated/manifest.json`
+- `generated/delivery-receipt.json`
 
 禁止手工修改生成文件。需要调整时修改输入 JSON 后重新生成。
 
@@ -47,7 +48,8 @@ python3 "$SKILL_ROOT/scripts/render-snapshot.py" \
 python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --input snapshot-input.json \
   --svg generated/board.svg \
-  --xml generated/document.xml
+  --xml generated/document.xml \
+  --receipt generated/delivery-receipt.json
 
 npx -y @larksuite/whiteboard-cli@^0.2.13 \
   -i generated/board.svg -f svg --check
@@ -93,7 +95,8 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --svg generated/board.svg \
   --xml generated/document.xml \
   --remote-doc-json remote-doc.json \
-  --remote-board-raw remote-board-raw.json
+  --remote-board-raw remote-board-raw.json \
+  --receipt generated/delivery-receipt.json
 ```
 
 ## 6. 最终门禁
@@ -109,5 +112,11 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 无白名单外整数；
 - 无归因、销售建议或提升空间表述；
 - 远端预览人工检查通过。
+- `delivery-receipt.json.content_version=2.7.1`；
+- `delivery-receipt.json.local_audit=passed`；
+- `delivery-receipt.json.remote_audit=passed`；
+- `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
 
 通过后才返回文档链接和 `文档URL#whiteboard_block_id`。
+
+最终回复必须同时报告执行回执中的 `content_version`、`input_sha256` 前 12 位、`local_audit` 和 `remote_audit`。无法提供这些值表示确定性流水线没有执行，禁止声称“门禁已通过”。
