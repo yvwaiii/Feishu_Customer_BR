@@ -2,7 +2,7 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`2.6.3`
+> 当前版本：`2.7.0`
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -40,6 +40,7 @@ Skill 会完成：
 - 正常生成正式回顾文档和画板；
 - 口径明确标记为 `C360 最新使用快照`；
 - 不展示近 180 天累计、日均、趋势或同比。
+- 使用内置确定性渲染器生成画板和文档，Aily 不再自行编写 SVG、单位或洞见。
 
 ### C360 + Aeolus 增强模式
 
@@ -49,6 +50,10 @@ Skill 会完成：
 - 在 C360 快照基础上补充近 180 天累计和日均指标；
 - 可补充紧邻前 180 天对比；
 - 输出中标注明确的起止日期和数据来源。
+
+Aeolus 依赖可访问 ByteDance 内网的浏览器会话。Aily SaaS 环境不能通过安装 Skill 获得内网访问能力；需要增强版时，请在 TRAE/Codex 等可访问内网的本地 Agent 运行，或向 Aily 提供 Aeolus 导出。
+
+Aily 会先生成 C360 快照版并返回链接，同时只提醒一次如何导出 Aeolus。用户后续粘贴 CSV、XLSX、完整截图或两期指标表后，再升级同一份文档和画板；未提供时不会阻塞或反复提醒。
 
 七个模块包括：
 
@@ -207,8 +212,12 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 ├── assets/
 │   └── board-preview.png
 ├── scripts/
+│   ├── audit-snapshot.py
 │   ├── bootstrap-lark-c360.sh
-│   └── cache-c360-artifact.sh
+│   ├── cache-c360-artifact.sh
+│   ├── preflight-release.py
+│   ├── render-snapshot.py
+│   └── validate-snapshot-input.py
 └── references/
     ├── aeolus-browser-runbook.md
     ├── bootstrap-and-recovery.md
@@ -221,3 +230,11 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 ```
 
 详细执行规则请查看 `SKILL.md` 和 `references/`。
+
+发布到 SkillHub 前必须运行：
+
+```bash
+python3 scripts/preflight-release.py
+```
+
+SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `2.7.0`，对应 SkillHub 版本不得低于 `1.0.4`。
