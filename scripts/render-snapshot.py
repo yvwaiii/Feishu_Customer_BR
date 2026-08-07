@@ -46,7 +46,7 @@ FIELD_SPECS = {
 }
 
 OPTIONAL_FIELD_SPECS = {
-    "suite_dau": ("套件 DAU", "人", 0, "instant"),
+    "tenant_primary_suite_version_suite_dau_avg_7workday": ("主版本近 7 日均 DAU", "人", 0, "instant"),
     "active_ucnt": ("激活用户", "人", 0, "instant"),
     "send_msg_ucnt": ("发消息用户", "人", 0, "instant"),
     "msg_sender_ucnt_penetration_rate": ("发消息渗透率", "%", 2, "instant"),
@@ -97,7 +97,7 @@ MODULE_FIELDS = [
 ]
 
 BOARD_PRIORITY = {
-    "instant": ["suite_dau", "im_dau", "im_dau_penetration_rate", "active_rate_7workday", "active_duration_pavg_7workday"],
+    "instant": ["tenant_primary_suite_version_suite_dau_avg_7workday", "im_dau", "im_dau_penetration_rate", "active_rate_7workday", "active_duration_pavg_7workday"],
     "meeting": ["vc_dau", "vc_meeting_cnt", "join_meeting_ucnt", "vc_meeting_active_duration_pavg_val", "vc_ai_minutes_dau_penetration_rate"],
     "content": ["doc_independent_create_fcnt", "doc_view_dau_penetration_rate", "wiki_dau", "wiki_dau_penetration_rate", "tenant_used_wiki_space_cnt"],
     "base": ["base_dau_rate_avg_7workday", "base_rownum_over15000_fcnt", "bitable_automation_run", "base_dashboard_cnt", "base_ai_dau"],
@@ -317,7 +317,7 @@ https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=124
     handoff_path.write_text(aeolus_request)
     receipt = {
         "generator": "customer-business-review/render-snapshot.py",
-        "content_version": "3.0.1",
+        "content_version": "3.0.2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "c360_snapshot",
         "field_count": len(FIELD_SPECS) + len(data.get("extra_metrics", {})),

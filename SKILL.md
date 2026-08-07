@@ -1,6 +1,6 @@
 ---
 name: "customer-business-review"
-version: "3.0.1"
+version: "3.0.2"
 description: "生成客户飞书整体使用情况回顾与数据洞察画板。用户提到回访、BR、Business Review、客户复盘、使用回顾或主租户近 180 天分析等相近意图时自动调用。"
 ---
 

@@ -144,7 +144,7 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 所有数字均来自输入 JSON、固定版式或可复核派生运算；
 - 无归因、销售建议或提升空间表述；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=3.0.1`；
+- `delivery-receipt.json.content_version=3.0.2`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
