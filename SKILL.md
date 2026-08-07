@@ -1,6 +1,6 @@
 ---
 name: "customer-business-review"
-version: "2.6.0"
+version: "2.6.1"
 description: "生成客户飞书整体使用情况回顾与数据洞察画板。用户提到回访、BR、Business Review、客户复盘、使用回顾或主租户近 180 天分析等相近意图时自动调用。"
 ---
 
@@ -22,7 +22,7 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 2. 可选 `review_reason`：仅用于理解回顾背景，不进入数据画板。
 3. 可选 `review_month`：计划回访月份；缺失时使用当前月份。
 
-先执行 [环境检测、安装与恢复](references/bootstrap-and-recovery.md) 和 [运行能力检测与用户提醒](references/runtime-capability-and-notification.md)。若未安装 `lark-c360`，自动安装并验证；不得仅告知用户“缺少工具”后停止。启动时识别运行环境，并选择 C360 快照模式或 C360 + Aeolus 增强模式。
+先执行 [环境检测、安装与恢复](references/bootstrap-and-recovery.md) 和 [运行能力检测与用户提醒](references/runtime-capability-and-notification.md)。若未安装 `lark-c360`，必须使用 Skill 内置脚本从 C360 官方 TOS 安装；公共 npm 404 不是终止条件。启动时识别运行环境，并选择 C360 快照模式或 C360 + Aeolus 增强模式。
 
 若输入 F 码，先精确反查租户和所属客户，再查询该客户下全部租户并按 DAU 验证主租户。租户显示名与客户正式名称分开保存。客户无法唯一匹配时，要求 CSM 补充或选择，并停止其他动作。
 
@@ -37,6 +37,8 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 5. 建立 coverage matrix，按七模块组合分析全部有效指标。
 6. 生成一张数据洞察画板和一份“飞书整体使用情况回顾”文档。
 7. 回读画板和文档，确认数据、结构、口径和视觉无误后结束。
+
+若任务方声明 C360 数据位于旧 `/home/gem/.aily/workdir/...` 路径，但当前沙箱不可读：先解析 `~/.aily/workspace` 持久化副本；不存在时安装/登录 C360 并重新查询。不得因旧任务路径失效而停止。
 
 阻塞条件仅包括：客户无法唯一匹配；主租户或 F 码缺失；C360 七模块数据不足以形成有效回顾。Aeolus 不可访问本身不阻塞 C360 快照版。
 

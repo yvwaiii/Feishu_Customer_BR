@@ -2,7 +2,7 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`2.6.0`
+> 当前版本：`2.6.1`
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -86,6 +86,22 @@ Skill 会完成：
 2. 下载 `customer-business-review-skill.zip`；
 3. 解压到工作区的 `.trae/skills/` 目录。
 
+### Aily 智能伙伴
+
+将 Skill 解压到 `~/.aily/workspace/skills/customer-business-review/`。首次运行时，Skill 会从 C360 官方 TOS 安装 CLI 到 `~/.aily/workspace`，不会访问公共 npm registry。
+
+官方手动安装命令：
+
+```bash
+npm install -g \
+  https://lf-ldic360.feishucdn.com/obj/ldi-c360/cli/lark-c360/latest/customer360-lark-c360.tgz \
+  --prefix ~/.aily/workspace
+export PATH="$HOME/.aily/workspace/bin:$PATH"
+lark-c360 install-skills --force
+```
+
+Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspace`。`/home/gem/.aily/workdir/<task>/` 是任务临时目录，不应作为跨会话数据地址。
+
 安装后的目录结构：
 
 ```text
@@ -124,6 +140,8 @@ Skill 会完成：
 ```text
 请在我提供 Aeolus 导出后，将当前快照版升级为近 180 天增强版。
 ```
+
+如果上一次任务给出了不可访问的 `/home/gem/.aily/workdir/...` 数据路径，新任务会先查 `~/.aily/workspace` 持久化副本；不存在时自动重新登录或查询 C360，不会直接终止。
 
 ## 输入
 
@@ -186,6 +204,9 @@ Skill 会完成：
 ├── README.md
 ├── assets/
 │   └── board-preview.png
+├── scripts/
+│   ├── bootstrap-lark-c360.sh
+│   └── cache-c360-artifact.sh
 └── references/
     ├── aeolus-browser-runbook.md
     ├── bootstrap-and-recovery.md
