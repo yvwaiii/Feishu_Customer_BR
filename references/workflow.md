@@ -63,7 +63,7 @@ python3 <当前Skill根目录>/scripts/validate-snapshot-input.py <input.md>
 1. 按业务板块关联全部指标。
 2. 生成 coverage matrix，检查有效核心字段是否完整。
 3. 快照模式只按 [数据源与工具路由](tool-routing.md) 中的 C360 七模块字段检查；不要求会议数、参会人次、总时长、AI ARPU 等增强字段。
-4. 快照模式按 [确定性交付流水线](deterministic-delivery.md) 把 35 个字段写入 JSON，运行 `render-snapshot.py`；不得自行选择指标、编写洞见或 SVG。
+4. 快照模式按 [确定性交付流水线](deterministic-delivery.md) 把 35 个必需字段及全部已注册 C360 扩展字段写入 JSON，运行 `render-snapshot.py`；不得自行删减会议等模块数据，不得编写 SVG。
 5. 运行 `audit-snapshot.py` 和 whiteboard-cli `--check`，失败时停止。
 6. 按 [数据源与工具路由](tool-routing.md) 通过生成的 XML 创建文档和画板；不得调用不存在的 `whiteboard +create`。
 7. 创建“飞书整体使用情况回顾”文档，并取得文档 URL、whiteboard block ID 和 token。

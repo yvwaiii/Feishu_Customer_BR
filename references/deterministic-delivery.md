@@ -20,9 +20,19 @@
 }
 ```
 
-`metrics` 必须包含 `scripts/render-snapshot.py` 的 `FIELD_SPECS` 中全部 35 个字段。值必须是 JSON 数字，不带单位、逗号或百分号。
+`metrics` 必须包含 `scripts/render-snapshot.py` 的 `FIELD_SPECS` 中全部 35 个必需字段。值必须是 JSON 数字，不带单位、逗号或百分号。
 
-不要写入会议数、参会人次、ARR、AI ARPU、AI 额度、FAQ、人工工单等白名单外字段。
+35 个必需字段只是稳定基线，不是字段上限。C360 实体 meta 中真实存在、在 `OPTIONAL_FIELD_SPECS` 注册且有有效值的字段必须写入 `extra_metrics`：
+
+```json
+"extra_metrics": {
+  "vc_dau": {"value": 61, "source": "c360"},
+  "vc_meeting_cnt": {"value": 51, "source": "c360"},
+  "join_meeting_ucnt": {"value": 104, "source": "c360"}
+}
+```
+
+扩展字段必须带 `source=c360`。未注册字段先更新字段注册表，不得直接删除真实数据，也不得猜测值。
 
 ## 2. 确定性生成
 
@@ -106,17 +116,17 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 
 必须同时满足：
 
-- 35 个快照字段完整；
+- 35 个必需字段完整，全部已提供的注册扩展字段也完整进入正文；
 - 画板七模块存在；
 - 画板不包含任何洞见、判断或建议；洞见只在文档正文；
 - 数字与单位在同一文本节点；
 - raw 节点 `image=0`；
 - raw 节点 `group>=7`；
 - 无转义 SVG 普通段落；
-- 无白名单外整数；
+- 所有数字均来自输入 JSON、固定版式或可复核派生运算；
 - 无归因、销售建议或提升空间表述；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=2.7.2`；
+- `delivery-receipt.json.content_version=3.0.0`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
