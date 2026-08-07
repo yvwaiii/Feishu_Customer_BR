@@ -32,6 +32,10 @@ for relative in manifest["required_files"]:
     if relative.startswith("scripts/") and not mode & 0o100:
         errors.append(f"脚本不可执行：{relative} ({oct(mode)})")
 
+for path in root.rglob("*"):
+    if path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"}:
+        errors.append(f"发布包包含 Python 缓存：{path.relative_to(root)}")
+
 for forbidden in [
     "npm install -g @customer360/lark-c360",
     "lark-cli whiteboard +create",

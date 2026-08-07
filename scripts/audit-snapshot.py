@@ -13,6 +13,18 @@ BANNED_WORDS = [
     "续约", "增购", "重度办公", "已替代", "原因是",
 ]
 
+MEETING_REQUIRED = [
+    "vc_dau",
+    "vc_dau_penetration_rate",
+    "vc_meeting_cnt",
+    "join_meeting_ucnt",
+    "vc_meeting_active_duration_pavg_val",
+    "minutes_dau",
+    "minutes_dau_penetration_rate",
+    "vc_ai_dau",
+    "vc_ai_minutes_dau_penetration_rate",
+]
+
 
 def fail(errors):
     print(json.dumps({"ok": False, "errors": errors}, ensure_ascii=False, indent=2))
@@ -34,6 +46,30 @@ def main():
     svg = Path(args.svg).read_text()
     xml = Path(args.xml).read_text()
     errors = []
+    extra_metrics = data.get("extra_metrics", {})
+
+    if data.get("percent_scale") != "0_to_100":
+        errors.append("percent_scale 必须明确为 0_to_100")
+    source_snapshot = data.get("source_snapshot", {})
+    for key in ["queried_at", "fcode", "normalized_response_sha256"]:
+        if not source_snapshot.get(key):
+            errors.append(f"source_snapshot 缺少 {key}")
+    if source_snapshot.get("fcode") and source_snapshot["fcode"] != data.get("fcode"):
+        errors.append("source_snapshot.fcode 与主租户 F 码不一致")
+    for key in MEETING_REQUIRED:
+        if key not in data.get("metrics", {}) and key not in extra_metrics:
+            errors.append(f"会议模块缺少 C360 核心字段：{key}")
+
+    percent_values = {}
+    for key, value in data.get("metrics", {}).items():
+        if "%" in key or "rate" in key or "penetration" in key:
+            percent_values[key] = value
+    for key, item in extra_metrics.items():
+        if "%" in key or "rate" in key or "penetration" in key:
+            percent_values[key] = item.get("value")
+    for key, value in percent_values.items():
+        if not isinstance(value, (int, float)) or not 0 <= value <= 100:
+            errors.append(f"百分比字段未归一到 0-100：{key}={value}")
 
     if "<whiteboard type=\"svg\"" not in xml:
         errors.append("文档未使用 SVG whiteboard 资源块")
@@ -53,6 +89,11 @@ def main():
     for value in [" 人", " 个", " 张", " 次", " 分钟", " 单"]:
         if value not in svg:
             errors.append(f"画板缺少同行单位：{value.strip()}")
+    rendered_values = re.findall(r'font-size="28"[^>]*>(.*?)</text>', svg)
+    rendered_values += re.findall(r"<td><b>(.*?)</b></td>", xml)
+    for value in rendered_values:
+        if re.search(r"\d+\.\d+", value):
+            errors.append(f"展示值不是整数：{value}")
 
     metrics = data.get("metrics", {})
     svg_visible = " ".join(re.findall(r"<text\b[^>]*>(.*?)</text>", svg, flags=re.S))
@@ -76,6 +117,9 @@ def main():
                 collect_scalars(child)
         else:
             allowed_numbers.update(re.findall(r"\d[\d,.]*", str(value)))
+            if isinstance(value, (int, float)):
+                allowed_numbers.add(f"{value:,.0f}")
+                allowed_numbers.add(f"{value:.0f}")
     collect_scalars(data)
     scalar_blob = json.dumps(data, ensure_ascii=False)
     allowed_numbers.update({"7", "180", "1.5", "01", "02", "03", "04", "05", "06", "07"})

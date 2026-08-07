@@ -34,6 +34,21 @@
 
 扩展字段必须带 `source=c360`。未注册字段先更新字段注册表，不得直接删除真实数据，也不得猜测值。
 
+采集前先运行 `python3 scripts/query-fields.py`，使用输出的 `all_fields` 与实体 meta 求交集后一次性查询。禁止只查询 35 个必需字段。
+
+输入还必须包含：
+
+```json
+"percent_scale": "0_to_100",
+"source_snapshot": {
+  "queried_at": "ISO-8601 时间",
+  "fcode": "主租户 F 码",
+  "normalized_response_sha256": "规范化 C360 响应哈希"
+}
+```
+
+原始数值保持 C360 精度，展示层统一取整数。百分比只允许 `0_to_100` 口径，不得无条件乘以 100。
+
 ## 2. 确定性生成
 
 ```bash
@@ -117,6 +132,9 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 必须同时满足：
 
 - 35 个必需字段完整，全部已提供的注册扩展字段也完整进入正文；
+- 会议模块至少包含 VC DAU、VC 渗透率、会议数、参会人次、平均参会时长、妙记 DAU/渗透率、智能纪要 DAU/渗透率；
+- 所有展示值为整数，输入 JSON 保留原始精度；
+- 回执包含 C360 查询时间、F 码和规范化响应哈希；
 - 画板七模块存在；
 - 画板不包含任何洞见、判断或建议；洞见只在文档正文；
 - 数字与单位在同一文本节点；
@@ -126,7 +144,7 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 所有数字均来自输入 JSON、固定版式或可复核派生运算；
 - 无归因、销售建议或提升空间表述；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=3.0.0`；
+- `delivery-receipt.json.content_version=3.0.1`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。

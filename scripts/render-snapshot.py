@@ -134,12 +134,9 @@ def n(data, key):
 
 def fmt(data, key):
     spec = FIELD_SPECS.get(key) or OPTIONAL_FIELD_SPECS.get(key)
-    label, unit, digits = spec[:3]
+    label, unit, _ = spec[:3]
     value = n(data, key)
-    if digits == 0:
-        number = f"{value:,.0f}"
-    else:
-        number = f"{value:,.{digits}f}"
+    number = f"{value:,.0f}"
     return label, f"{number}{unit}" if unit == "%" else f"{number} {unit}"
 
 
@@ -149,18 +146,18 @@ def insights(data):
         meeting_insight = (
             f"VC DAU {n(data, 'vc_dau'):,.0f} 人；"
             f"{n(data, 'vc_meeting_cnt'):,.0f} 场会议覆盖 {n(data, 'join_meeting_ucnt'):,.0f} 人次，"
-            f"单场平均 {n(data, 'join_meeting_ucnt') / n(data, 'vc_meeting_cnt'):.2f} 人次。"
+            f"单场平均 {n(data, 'join_meeting_ucnt') / n(data, 'vc_meeting_cnt'):.0f} 人次。"
         )
     else:
-        meeting_insight = f"智能纪要渗透高于妙记 {m['vc_ai_minutes_dau_penetration_rate']-m['minutes_dau_penetration_rate']:.2f}pp，两项覆盖均处起步阶段。"
+        meeting_insight = f"智能纪要渗透高于妙记 {m['vc_ai_minutes_dau_penetration_rate']-m['minutes_dau_penetration_rate']:.0f}pp，两项覆盖均处起步阶段。"
     return [
-        f"IM 渗透与活跃率相差 {abs(m['im_dau_penetration_rate']-m['active_rate_7workday']):.2f}pp，协同入口覆盖稳定。",
+        f"IM 渗透与活跃率相差 {abs(m['im_dau_penetration_rate']-m['active_rate_7workday']):.0f}pp，协同入口覆盖稳定。",
         meeting_insight,
-        f"文档与 Wiki 渗透相差 {abs(m['doc_view_dau_penetration_rate']-m['wiki_dau_penetration_rate']):.2f}pp，内容消费路径接近。",
-        f"多维表格渗透低于 IM {m['im_dau_penetration_rate']-m['base_dau_rate_avg_7workday']:.2f}pp，但已覆盖多数活跃用户。",
-        f"搜索渗透高于词典 {m['search_dau_penetration_rate']-m['teampedia_dau_penetration_rate']:.2f}pp，自建词条仍为空白。",
-        f"多维表格 AI 占 AI DAU {m['base_ai_dau']/m['ai_dau']*100:.2f}%，Aily 尚未形成日活。",
-        f"DAU/WAU 为 {m['helpdesk_dau']/m['helpdesk_wau']*100:.2f}%，机器人闭环率达到 {m['bot_finish_rate']:.2f}%。",
+        f"文档与 Wiki 渗透相差 {abs(m['doc_view_dau_penetration_rate']-m['wiki_dau_penetration_rate']):.0f}pp，内容消费路径接近。",
+        f"多维表格渗透低于 IM {m['im_dau_penetration_rate']-m['base_dau_rate_avg_7workday']:.0f}pp，但已覆盖多数活跃用户。",
+        f"搜索渗透高于词典 {m['search_dau_penetration_rate']-m['teampedia_dau_penetration_rate']:.0f}pp，自建词条仍为空白。",
+        f"多维表格 AI 占 AI DAU {m['base_ai_dau']/m['ai_dau']*100:.0f}%，Aily 尚未形成日活。",
+        f"DAU/WAU 为 {m['helpdesk_dau']/m['helpdesk_wau']*100:.0f}%，机器人闭环率达到 {m['bot_finish_rate']:.0f}%。",
     ]
 
 
@@ -272,10 +269,10 @@ def render(data, out_dir):
         )
 
     core_observations = [
-        f"即时协同覆盖稳定：IM DAU {n(data, 'im_dau'):,.0f} 人，渗透率 {n(data, 'im_dau_penetration_rate'):.2f}%。",
+        f"即时协同覆盖稳定：IM DAU {n(data, 'im_dau'):,.0f} 人，渗透率 {n(data, 'im_dau_penetration_rate'):.0f}%。",
         f"会议使用规模可复核：VC DAU {n(data, 'vc_dau'):,.0f} 人，{n(data, 'vc_meeting_cnt'):,.0f} 场会议覆盖 {n(data, 'join_meeting_ucnt'):,.0f} 人次。",
-        f"内容与知识库使用接近：文档查看渗透率 {n(data, 'doc_view_dau_penetration_rate'):.2f}%，Wiki 渗透率 {n(data, 'wiki_dau_penetration_rate'):.2f}%。",
-        f"多维表格使用深入：渗透率 {n(data, 'base_dau_rate_avg_7workday'):.2f}%，自动化运行 {n(data, 'bitable_automation_run'):,.0f} 次。",
+        f"内容与知识库使用接近：文档查看渗透率 {n(data, 'doc_view_dau_penetration_rate'):.0f}%，Wiki 渗透率 {n(data, 'wiki_dau_penetration_rate'):.0f}%。",
+        f"多维表格使用深入：渗透率 {n(data, 'base_dau_rate_avg_7workday'):.0f}%，自动化运行 {n(data, 'bitable_automation_run'):,.0f} 次。",
         f"AI 已形成基础使用：AI DAU {n(data, 'ai_dau'):,.0f} 人，其中多维表格 AI DAU {n(data, 'base_ai_dau'):,.0f} 人。",
     ]
     core_xml = "".join(f"<li>{escape(item)}</li>" for item in core_observations)
@@ -320,12 +317,15 @@ https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=124
     handoff_path.write_text(aeolus_request)
     receipt = {
         "generator": "customer-business-review/render-snapshot.py",
-        "content_version": "3.0.0",
+        "content_version": "3.0.1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "c360_snapshot",
         "field_count": len(FIELD_SPECS) + len(data.get("extra_metrics", {})),
         "required_field_count": len(FIELD_SPECS),
         "optional_field_count": len(data.get("extra_metrics", {})),
+        "display_rounding": "half_even_integer",
+        "raw_precision_preserved": True,
+        "source_snapshot": data.get("source_snapshot"),
         "input_sha256": hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
         "board_sha256": hashlib.sha256(svg_path.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256((out_dir / "document.xml").read_bytes()).hexdigest(),
