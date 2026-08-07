@@ -72,7 +72,26 @@
 - 画板写入后必须回读预览，确认颜色、文字、节点和整体比例与本地预览一致；
 - 如原画板已被失败写入污染，新建画板，不在损坏画板上继续叠加。
 
-## 强制数据清单
+## C360 快照模式清单
+
+快照模式只要求当前输入或 C360 返回的七模块字段。以下字段足以生成完整七模块回顾：
+
+- 即时协同：`active_rate_7workday`、`activate_rate`、`active_duration_pavg_7workday`、`im_dau`、`im_dau_penetration_rate`；
+- 会议协同：`vc_meeting_active_duration_pavg_val`、`minutes_dau_penetration_rate`、`vc_ai_minutes_dau_penetration_rate`；
+- 内容沉淀：`doc_independent_create_fcnt`、`doc_view_dau_penetration_rate`、`tenant_used_wiki_space_cnt`、`wiki_dau`、`wiki_dau_penetration_rate`；
+- 多维表格：`bitable_independent_create_fcnt`、`base_rownum_over15000_fcnt`、`bitable_automation_run`、`base_dashboard_cnt`、`base_dau_rate_avg_7workday`；
+- 知识管理：`cansearch_pv_per_user`、`knowledge_ai_pavg_use_cnt`、`search_dau_penetration_rate`、`teampedia_dau_penetration_rate`、`self_build_teampedia_entity_cnt`；
+- AI 赋能：`ai_dau`、`aily_dau`、`aily_buddy_dau`、`base_ai_dau`、`miaoda_app_dau`、`miaoda_claw_dau`；
+- 服务台：`helpdesk_cnt`、`tenant_used_normal_helpdesks_all_cnt`、`helpdesk_dau`、`helpdesk_wau`、`ticket_cnt`、`bot_finish_rate`。
+
+某模块至少有 3 个有效可解释字段即可展示。不得要求快照输入补充以下增强字段：
+
+- 会议数、参会人次、会议总时长；
+- 统计期文档或多维表格累计创建数；
+- AI ARPU、AI 用量、AI ARR；
+- 时间趋势、前期对比或同比。
+
+## 增强模式补充清单
 
 字段存在且有有效值时，回顾正文必须展示；无数据时在 coverage matrix 记录原因。
 
@@ -156,6 +175,7 @@ Aeolus 与 C360 可能返回不同时间和聚合口径：
 
 - coverage matrix 只要求 C360 当前可用的七模块核心字段；
 - Aeolus 字段标记为“当前运行模式未接入”，不算数据缺失；
+- 增强模式清单中的字段未提供时不算缺失，不得向用户追问；
 - 文档和画板不得出现近 180 天累计、日均、趋势或同比表述；
 - 不得因为 Aeolus 未接入而把正式快照版降级为预分析。
 

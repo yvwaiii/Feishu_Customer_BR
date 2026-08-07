@@ -11,6 +11,8 @@
 
 ## C360 路由
 
+若用户消息已经提供经过校验的客户、主租户、F 码和下述七模块字段，视为本次 C360 查询结果，直接使用；不再执行 CLI，也不要求再次粘贴。附件仅用于可选交叉校验。
+
 | 数据 | Skill | 执行要求 |
 |---|---|---|
 | 客户匹配、客户档案、客户下租户、ARR | `c360-account` | 先按客户名获取唯一 account；客户下租户列表必须走 account 规定的 tenant/list 页面同形请求 |
@@ -68,8 +70,22 @@
 
 | 任务 | Skill | 规则 |
 |---|---|---|
-| 创建使用情况回顾文档、插入画板 | `lark-doc` | 使用用户身份，保存到当前 CSM 个人云盘个人空间 |
-| 创建、更新、导出和检查总画板 | `lark-whiteboard` | 只创建一张；写入后导出预览做视觉检查 |
+| 创建使用情况回顾文档、创建画板资源块 | `lark-doc` | 使用用户身份，保存到当前 CSM 个人云盘个人空间 |
+| 更新、导出和检查总画板 | `lark-whiteboard` | 只更新文档中已创建的画板；写入后导出预览 |
+
+当前 CLI 没有 `lark-cli whiteboard +create`。禁止调用不存在的命令。
+
+可靠流程：
+
+1. 生成完整 SVG 文件；
+2. 若文档使用 XML 创建，在正文插入 `<whiteboard type="svg" path="@board.svg"></whiteboard>`；
+3. 若用户明确要求 `docs +create --doc-format markdown`，先创建 Markdown 文档，再用 `docs +update` 以 XML 追加 SVG whiteboard 资源块；
+4. 从 `docs +create` 或 `docs +update` 返回的 `new_blocks` 读取 `block_token`（whiteboard token）和 `block_id`；
+5. 如需重写内容，调用 `lark-cli whiteboard +update --whiteboard-token <token> --input_format svg --source @board.svg --overwrite --as user`；
+6. 调用 `whiteboard +query --output_as image` 回读预览；
+7. 文档链接使用返回的 `url`；画板链接使用 `<文档URL>#<whiteboard block_id>`。
+
+不得把 whiteboard token 猜成独立 URL。
 
 ## 并行边界
 
