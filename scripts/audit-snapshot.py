@@ -27,6 +27,7 @@ def main():
     p.add_argument("--remote-doc-json")
     p.add_argument("--remote-board-raw")
     p.add_argument("--receipt")
+    p.add_argument("--aeolus-request")
     args = p.parse_args()
 
     data = json.loads(Path(args.input).read_text())
@@ -40,6 +41,10 @@ def main():
         errors.append("文档包含转义 SVG 源码")
     if len(re.findall(r"<g transform=.*?stroke=", svg)) < 7:
         errors.append("少于 7 组图标")
+    board_text = " ".join(re.findall(r"<text\b[^>]*>(.*?)</text>", svg, flags=re.S))
+    for marker in ["客观洞见", "相差", "高于", "低于", "达到", "起步阶段"]:
+        if marker in board_text:
+            errors.append(f"画板包含洞见文本：{marker}")
     if "<image" in svg:
         errors.append("SVG 包含图片节点")
     for word in BANNED_WORDS:
@@ -115,6 +120,16 @@ def main():
         for key, value in expected.items():
             if receipt.get(key) != value:
                 fail([f"执行回执哈希不匹配：{key}"])
+        if not args.aeolus_request:
+            fail(["缺少 --aeolus-request，无法校验主动邀请"])
+        request_path = Path(args.aeolus_request)
+        request_sha = hashlib.sha256(request_path.read_bytes()).hexdigest()
+        if receipt.get("aeolus_request_sha256") != request_sha:
+            fail(["Aeolus 邀请文件哈希不匹配"])
+        request_text = request_path.read_text()
+        for marker in ["无法直接访问 Aeolus", "主租户 F 码", "连续 180 天", "CSV", "XLSX"]:
+            if marker not in request_text:
+                fail([f"Aeolus 邀请缺少内容：{marker}"])
         receipt["local_audit"] = "passed"
         receipt["remote_audit"] = "passed" if args.remote_doc_json and args.remote_board_raw else "pending"
         if args.remote_board_raw:

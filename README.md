@@ -2,7 +2,7 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`2.7.1`
+> 当前版本：`2.7.2`
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -237,6 +237,6 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 python3 scripts/preflight-release.py
 ```
 
-SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `2.7.1`，对应 SkillHub 版本不得低于 `1.0.5`。
+SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `2.7.2`，对应 SkillHub 版本不得低于 `1.0.6`。
 
 每次正式交付还必须生成 `delivery-receipt.json`。最终回复需要报告内容版本、输入哈希前 12 位、本地审计和云端审计状态；没有回执时不得声称质量门禁已通过。

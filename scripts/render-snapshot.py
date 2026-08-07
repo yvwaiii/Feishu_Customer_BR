@@ -125,19 +125,19 @@ def render(data, out_dir):
         modules.append((title, color, [(key, *fmt(data, key)) for key in fields], ins[idx]))
 
     svg = [
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 2460">',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1960">',
         '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#172554"/><stop offset="1" stop-color="#06080F"/></linearGradient></defs>',
-        '<rect width="1600" height="2460" fill="url(#bg)"/>',
+        '<rect width="1600" height="1960" fill="url(#bg)"/>',
         '<rect x="58" y="56" width="5" height="98" rx="2.5" fill="#5CC8FF"/>',
         text(82, 101, f"{data['tenant_name']} × 飞书｜最新使用快照", 34, "#F7FAFF", weight=700),
         text(82, 137, f"数据来源：C360 最新使用快照｜主租户 {data['fcode']}｜{data['suite']}", 15, "#9CAAC6"),
     ]
     centers = [205, 495, 785, 1075, 1365]
     for idx, (title, color, metrics, insight) in enumerate(modules):
-        y = 190 + idx * 300
+        y = 190 + idx * 238
         svg += [
-            f'<rect x="58" y="{y}" width="1484" height="280" rx="26" fill="#0A0E1A" stroke="#343A4B" stroke-width="2"/>',
-            f'<rect x="58" y="{y}" width="5" height="280" rx="2.5" fill="{color}"/>',
+            f'<rect x="58" y="{y}" width="1484" height="220" rx="26" fill="#0A0E1A" stroke="#343A4B" stroke-width="2"/>',
+            f'<rect x="58" y="{y}" width="5" height="220" rx="2.5" fill="{color}"/>',
             f'<g transform="translate(82 {y+28})" fill="none" stroke="{color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">{ICONS[idx]}</g>',
             text(132, y + 58, title, 24, "#F2F6FF", weight=700),
             f'<line x1="82" y1="{y+78}" x2="1518" y2="{y+78}" stroke="#20283A"/>',
@@ -145,11 +145,10 @@ def render(data, out_dir):
         used = [350, 800, 1250] if len(metrics) == 3 else centers
         for cx, (_, label, value) in zip(used, metrics):
             svg += [text(cx, y + 123, label, 15, "#8E9AB4", "middle"), text(cx, y + 174, value, 28, "#F7FAFF", "middle", 700)]
-        svg.append(text(88, y + 240, insight, 17, "#C7D9FF", weight=500))
     svg += [
-        '<rect x="58" y="2290" width="1484" height="108" rx="20" fill="#10172A" stroke="#343A4B" stroke-width="2"/>',
-        text(82, 2328, "数据口径", 17, "#C9D5EF", weight=700),
-        text(82, 2362, "C360 最新使用快照。本次未接入 Aeolus，因此不包含近 180 天累计、日均、趋势和对比期。", 15, "#8E9AB4"),
+        '<rect x="58" y="1860" width="1484" height="74" rx="20" fill="#10172A" stroke="#343A4B" stroke-width="2"/>',
+        text(82, 1889, "数据口径", 16, "#C9D5EF", weight=700),
+        text(82, 1916, "C360 最新使用快照。本次未接入 Aeolus，因此不包含近 180 天累计、日均、趋势和对比期。", 14, "#8E9AB4"),
         "</svg>",
     ]
     svg_path = out_dir / "board.svg"
@@ -181,15 +180,29 @@ def render(data, out_dir):
 <hr/><p><b>说明：</b>仅使用已确认的主租户 C360 快照字段。文档不包含无来源数据、对标、因果推断或销售建议。</p>'''
     (out_dir / "document.xml").write_text(doc)
     (out_dir / "manifest.json").write_text(json.dumps({"mode": "c360_snapshot", "fields": list(FIELD_SPECS), "insights": ins}, ensure_ascii=False, indent=2))
+    aeolus_request = f"""当前 Aily 环境无法直接访问 Aeolus，我已先生成 C360 最新使用快照版。
+
+如果你希望升级为近 180 天增强版，请在可访问 ByteDance 内网的浏览器打开：
+https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=1247624
+
+查询条件：主租户 F 码 {data['fcode']}
+- 当前期：以看板最近可用数据日为结束日，向前连续 180 天
+- 对比期：紧邻当前期之前的连续 180 天
+
+请将 CSV、XLSX、完整截图或两期指标表发给我。收到后我会校验 F 码与日期口径，并升级现有文档和画板。若暂不提供，当前 C360 快照版仍可正常使用。"""
+    handoff_path = out_dir / "aeolus-request.txt"
+    handoff_path.write_text(aeolus_request)
     receipt = {
         "generator": "customer-business-review/render-snapshot.py",
-        "content_version": "2.7.1",
+        "content_version": "2.7.2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "c360_snapshot",
         "field_count": len(FIELD_SPECS),
         "input_sha256": hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
         "board_sha256": hashlib.sha256(svg_path.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256((out_dir / "document.xml").read_bytes()).hexdigest(),
+        "aeolus_request_sha256": hashlib.sha256(handoff_path.read_bytes()).hexdigest(),
+        "aeolus_handoff_required": True,
         "local_audit": "pending",
         "remote_audit": "pending"
     }

@@ -39,6 +39,7 @@ python3 "$SKILL_ROOT/scripts/render-snapshot.py" \
 - `generated/document.xml`
 - `generated/manifest.json`
 - `generated/delivery-receipt.json`
+- `generated/aeolus-request.txt`
 
 禁止手工修改生成文件。需要调整时修改输入 JSON 后重新生成。
 
@@ -49,7 +50,8 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --input snapshot-input.json \
   --svg generated/board.svg \
   --xml generated/document.xml \
-  --receipt generated/delivery-receipt.json
+  --receipt generated/delivery-receipt.json \
+  --aeolus-request generated/aeolus-request.txt
 
 npx -y @larksuite/whiteboard-cli@^0.2.13 \
   -i generated/board.svg -f svg --check
@@ -96,7 +98,8 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --xml generated/document.xml \
   --remote-doc-json remote-doc.json \
   --remote-board-raw remote-board-raw.json \
-  --receipt generated/delivery-receipt.json
+  --receipt generated/delivery-receipt.json \
+  --aeolus-request generated/aeolus-request.txt
 ```
 
 ## 6. 最终门禁
@@ -105,6 +108,7 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 
 - 35 个快照字段完整；
 - 画板七模块存在；
+- 画板不包含任何洞见、判断或建议；洞见只在文档正文；
 - 数字与单位在同一文本节点；
 - raw 节点 `image=0`；
 - raw 节点 `group>=7`；
@@ -112,11 +116,11 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 无白名单外整数；
 - 无归因、销售建议或提升空间表述；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=2.7.1`；
+- `delivery-receipt.json.content_version=2.7.2`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
 
-通过后才返回文档链接和 `文档URL#whiteboard_block_id`。
+通过后才返回文档链接和 `文档URL#whiteboard_block_id`，并原样附上 `generated/aeolus-request.txt` 的内容。
 
 最终回复必须同时报告执行回执中的 `content_version`、`input_sha256` 前 12 位、`local_audit` 和 `remote_audit`。无法提供这些值表示确定性流水线没有执行，禁止声称“门禁已通过”。
