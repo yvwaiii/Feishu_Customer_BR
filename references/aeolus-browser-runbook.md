@@ -1,5 +1,7 @@
 # Aeolus 浏览器自动化手册
 
+本手册只适用于能够访问 ByteDance 内网的桌面运行环境。Aily 或云端沙箱访问失败时，不执行本手册，直接使用 C360 快照模式。
+
 固定看板：
 
 `https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=1247624`
