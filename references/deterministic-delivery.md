@@ -20,21 +20,21 @@
 }
 ```
 
-`metrics` 必须包含 `scripts/render-snapshot.py` 的 `FIELD_SPECS` 中全部 35 个必需字段。值必须是 JSON 数字，不带单位、逗号或百分号。
+`metrics` 必须包含 `scripts/render-snapshot.py` 的 `FIELD_SPECS` 中全部 41 个必需字段。值必须是 JSON 数字，不带单位、逗号或百分号。会议字段合同固定为九项：VC DAU、VC 渗透率、会议数、参会人次、平均参会时长、妙记 DAU/渗透率、智能纪要 DAU/渗透率。
 
-35 个必需字段只是稳定基线，不是字段上限。C360 实体 meta 中真实存在、在 `OPTIONAL_FIELD_SPECS` 注册且有有效值的字段必须写入 `extra_metrics`：
+41 个必需字段只是稳定基线，不是字段上限。C360 实体 meta 中真实存在、在 `OPTIONAL_FIELD_SPECS` 注册且有有效值的字段必须写入 `extra_metrics`：
 
 ```json
 "extra_metrics": {
-  "vc_dau": {"value": 61, "source": "c360"},
-  "vc_meeting_cnt": {"value": 51, "source": "c360"},
-  "join_meeting_ucnt": {"value": 104, "source": "c360"}
+  "vc_ai_dau_avg_7workday": {"value": 12.5, "source": "c360"},
+  "search_dau": {"value": 61, "source": "c360"},
+  "ai_arpu": {"value": 9.8, "source": "c360"}
 }
 ```
 
 扩展字段必须带 `source=c360`。未注册字段先更新字段注册表，不得直接删除真实数据，也不得猜测值。
 
-采集前先运行 `python3 scripts/query-fields.py`，使用输出的 `all_fields` 与实体 meta 求交集后一次性查询。禁止只查询 35 个必需字段。
+采集前先运行 `python3 scripts/query-fields.py`，使用输出的 `all_fields` 与实体 meta 求交集后一次性查询。禁止只查询 41 个必需字段。
 
 输入还必须包含：
 
@@ -47,7 +47,7 @@
 }
 ```
 
-原始数值保持 C360 精度，展示层统一取整数。百分比只允许 `0_to_100` 口径，不得无条件乘以 100。
+原始数值保持 C360 精度，展示层统一按十进制 `ROUND_HALF_UP` 取整数（`.5` 远离 0）。百分比只允许 `0_to_100` 口径，不得无条件乘以 100。派生比值的分母必须大于 0；否则只说明无法计算，不生成结构或阶段判断。
 
 ## 2. 确定性生成
 
@@ -73,6 +73,7 @@ python3 "$SKILL_ROOT/scripts/render-snapshot.py" \
 ```bash
 python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --input snapshot-input.json \
+  --source-json normalized-c360-response.json \
   --svg generated/board.svg \
   --xml generated/document.xml \
   --receipt generated/delivery-receipt.json \
@@ -119,6 +120,7 @@ lark-cli whiteboard +query \
 
 python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
   --input snapshot-input.json \
+  --source-json normalized-c360-response.json \
   --svg generated/board.svg \
   --xml generated/document.xml \
   --remote-doc-json remote-doc.json \
@@ -131,10 +133,10 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 
 必须同时满足：
 
-- 35 个必需字段完整，全部已提供的注册扩展字段也完整进入正文；
+- 41 个必需字段完整，全部已提供的注册扩展字段也完整进入正文；
 - 会议模块至少包含 VC DAU、VC 渗透率、会议数、参会人次、平均参会时长、妙记 DAU/渗透率、智能纪要 DAU/渗透率；
-- 所有展示值为整数，输入 JSON 保留原始精度；
-- 回执包含 C360 查询时间、F 码和规范化响应哈希；
+- 所有展示值按 `ROUND_HALF_UP` 为整数，输入 JSON 保留原始精度；
+- 回执包含 C360 查询时间、F 码和规范化响应哈希；审计逐项校验规范化 source JSON、规范化输入、内容版本及生成物哈希；
 - 画板七模块存在；
 - 画板不包含任何洞见、判断或建议；洞见只在文档正文；
 - 数字与单位在同一文本节点；
@@ -143,8 +145,9 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 无转义 SVG 普通段落；
 - 所有数字均来自输入 JSON、固定版式或可复核派生运算；
 - 无归因、销售建议或提升空间表述；
+- 远端文档指标值与本地 XML 逐值一致，远端画板指标值与本地 SVG 逐值一致；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=3.0.2`；
+- `delivery-receipt.json.content_version=3.1.0`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。

@@ -13,8 +13,14 @@ MODULES = {
         "im_dau_penetration_rate",
     ],
     "会议协同": [
+        "vc_dau",
+        "vc_dau_penetration_rate",
+        "vc_meeting_cnt",
+        "join_meeting_ucnt",
         "vc_meeting_active_duration_pavg_val",
+        "minutes_dau",
         "minutes_dau_penetration_rate",
+        "vc_ai_dau",
         "vc_ai_minutes_dau_penetration_rate",
     ],
     "内容沉淀": [
@@ -69,13 +75,15 @@ for module, fields in MODULES.items():
     found = [
         field
         for field in fields
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(field)}\s*=", text)
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(field)}[\"']?\s*[:=]", text)
     ]
+    minimum = len(fields) if module == "会议协同" else 3
     coverage[module] = {
         "found": found,
         "missing": [field for field in fields if field not in found],
         "valid_count": len(found),
-        "ready": len(found) >= 3,
+        "minimum_required": minimum,
+        "ready": len(found) >= minimum,
     }
 
 identity_ready = bool(

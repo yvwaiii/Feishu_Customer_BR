@@ -2,10 +2,14 @@
 import argparse
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+
+CONTENT_VERSION = "3.1.0"
 
 FIELD_SPECS = {
     "im_dau": ("IM DAU", "人", 0),
@@ -13,8 +17,14 @@ FIELD_SPECS = {
     "active_rate_7workday": ("近 7 工作日活跃率", "%", 2),
     "activate_rate": ("激活率", "%", 2),
     "active_duration_pavg_7workday": ("人均使用时长", "分钟", 2),
+    "vc_dau": ("VC DAU", "人", 0),
+    "vc_dau_penetration_rate": ("VC DAU 渗透率", "%", 2),
+    "vc_meeting_cnt": ("会议数", "场", 0),
+    "join_meeting_ucnt": ("参会人次", "人次", 0),
     "vc_meeting_active_duration_pavg_val": ("单场人均参会时长", "分钟", 2),
+    "minutes_dau": ("妙记 DAU", "人", 0),
     "minutes_dau_penetration_rate": ("妙记渗透率", "%", 2),
+    "vc_ai_dau": ("智能纪要 DAU", "人", 0),
     "vc_ai_minutes_dau_penetration_rate": ("智能纪要渗透率", "%", 2),
     "doc_independent_create_fcnt": ("文档独立创建数", "个", 0),
     "doc_view_dau_penetration_rate": ("文档查看渗透率", "%", 2),
@@ -52,12 +62,6 @@ OPTIONAL_FIELD_SPECS = {
     "msg_sender_ucnt_penetration_rate": ("发消息渗透率", "%", 2, "instant"),
     "op_app_dau": ("开放平台 DAU", "人", 0, "instant"),
     "op_app_dau_self": ("自建应用 DAU", "人", 0, "instant"),
-    "vc_dau": ("VC DAU", "人", 0, "meeting"),
-    "vc_dau_penetration_rate": ("VC DAU 渗透率", "%", 2, "meeting"),
-    "vc_meeting_cnt": ("会议数", "场", 0, "meeting"),
-    "join_meeting_ucnt": ("参会人次", "人次", 0, "meeting"),
-    "minutes_dau": ("妙记 DAU", "人", 0, "meeting"),
-    "vc_ai_dau": ("智能纪要 DAU", "人", 0, "meeting"),
     "vc_ai_dau_avg_7workday": ("智能纪要 DAU 近 7 工作日均值", "人", 2, "meeting"),
     "create_fcnt": ("创建文档数", "个", 0, "content"),
     "sheet_create_fcnt": ("Sheet 创建数", "个", 0, "content"),
@@ -80,19 +84,21 @@ OPTIONAL_FIELD_SPECS = {
 }
 
 MODULE_FIELDS = [
-    ("instant", "01｜统一协同底座、工作入口稳定", "#5CC8FF",
+    ("instant", "01｜即时协同覆盖与活跃", "#5CC8FF",
      ["im_dau", "im_dau_penetration_rate", "active_rate_7workday", "activate_rate", "active_duration_pavg_7workday"]),
-    ("meeting", "02｜会议协同活跃、智能纪要起步", "#4FE0CC",
-     ["vc_meeting_active_duration_pavg_val", "minutes_dau_penetration_rate", "vc_ai_minutes_dau_penetration_rate"]),
-    ("content", "03｜内容持续沉淀、知识库覆盖稳定", "#9D8CFF",
+    ("meeting", "02｜会议协同规模与纪要覆盖", "#4FE0CC",
+     ["vc_dau", "vc_dau_penetration_rate", "vc_meeting_cnt", "join_meeting_ucnt",
+      "vc_meeting_active_duration_pavg_val", "minutes_dau", "minutes_dau_penetration_rate",
+      "vc_ai_dau", "vc_ai_minutes_dau_penetration_rate"]),
+    ("content", "03｜内容创建与知识库使用", "#9D8CFF",
      ["doc_independent_create_fcnt", "doc_view_dau_penetration_rate", "tenant_used_wiki_space_cnt", "wiki_dau", "wiki_dau_penetration_rate"]),
-    ("base", "04｜业务线上运转、自动化使用深入", "#8D7CFF",
+    ("base", "04｜多维表格使用与自动化", "#8D7CFF",
      ["bitable_independent_create_fcnt", "base_rownum_over15000_fcnt", "bitable_automation_run", "base_dashboard_cnt", "base_dau_rate_avg_7workday"]),
-    ("knowledge", "05｜知识检索活跃、术语资产待建", "#B99CFF",
+    ("knowledge", "05｜知识检索与词典使用", "#B99CFF",
      ["cansearch_pv_per_user", "knowledge_ai_pavg_use_cnt", "search_dau_penetration_rate", "teampedia_dau_penetration_rate", "self_build_teampedia_entity_cnt"]),
-    ("ai", "06｜AI 使用形成、多维表格先行", "#75A7FF",
+    ("ai", "06｜AI 使用与产品分布", "#75A7FF",
      ["ai_dau", "aily_dau", "aily_buddy_dau", "base_ai_dau", "miaoda_app_dau"]),
-    ("helpdesk", "07｜服务响应覆盖、机器人承担闭环", "#51D3C8",
+    ("helpdesk", "07｜服务台使用与闭环", "#51D3C8",
      ["helpdesk_cnt", "helpdesk_dau", "helpdesk_wau", "ticket_cnt", "bot_finish_rate"]),
 ]
 
@@ -127,37 +133,97 @@ def n(data, key):
         if extra.get("source") != "c360":
             raise ValueError(f"{key} 的来源必须是 c360")
         value = extra.get("value")
-    if not isinstance(value, (int, float)):
-        raise ValueError(f"{key} 必须是数字")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{key} 必须是有限 JSON 数字")
     return value
+
+
+def rounded_integer(value):
+    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def display_number(value):
+    return f"{rounded_integer(value):,}"
+
+
+def safe_percent(numerator, denominator):
+    if denominator is None or denominator <= 0:
+        return None
+    return numerator / denominator * 100
+
+
+def relation(left_label, left, right_label, right):
+    delta = left - right
+    rounded = abs(rounded_integer(delta))
+    if rounded == 0:
+        return f"{left_label}与{right_label}展示值持平"
+    direction = "高于" if delta > 0 else "低于"
+    return f"{left_label}{direction}{right_label} {rounded}pp"
+
+
+def canonical_sha256(value):
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def fmt(data, key):
     spec = FIELD_SPECS.get(key) or OPTIONAL_FIELD_SPECS.get(key)
     label, unit, _ = spec[:3]
     value = n(data, key)
-    number = f"{value:,.0f}"
+    number = display_number(value)
     return label, f"{number}{unit}" if unit == "%" else f"{number} {unit}"
 
 
 def insights(data):
     m = data["metrics"]
-    if all(key in data.get("extra_metrics", {}) for key in ["vc_meeting_cnt", "join_meeting_ucnt", "vc_dau"]):
+    attendees_per_meeting = (
+        n(data, "join_meeting_ucnt") / n(data, "vc_meeting_cnt")
+        if n(data, "vc_meeting_cnt") > 0
+        else None
+    )
+    if attendees_per_meeting is not None:
         meeting_insight = (
-            f"VC DAU {n(data, 'vc_dau'):,.0f} 人；"
-            f"{n(data, 'vc_meeting_cnt'):,.0f} 场会议覆盖 {n(data, 'join_meeting_ucnt'):,.0f} 人次，"
-            f"单场平均 {n(data, 'join_meeting_ucnt') / n(data, 'vc_meeting_cnt'):.0f} 人次。"
+            f"会议参与规模与场次形成可复核关系，单场平均 "
+            f"{display_number(attendees_per_meeting)} 人次；"
+            f"{relation('智能纪要渗透', m['vc_ai_minutes_dau_penetration_rate'], '妙记渗透', m['minutes_dau_penetration_rate'])}。"
         )
     else:
-        meeting_insight = f"智能纪要渗透高于妙记 {m['vc_ai_minutes_dau_penetration_rate']-m['minutes_dau_penetration_rate']:.0f}pp，两项覆盖均处起步阶段。"
+        meeting_insight = (
+            "会议数为 0，无法计算单场参会人次；"
+            f"{relation('智能纪要渗透', m['vc_ai_minutes_dau_penetration_rate'], '妙记渗透', m['minutes_dau_penetration_rate'])}。"
+        )
+    ai_share = safe_percent(m["base_ai_dau"], m["ai_dau"])
+    ai_insight = (
+        f"多维表格 AI 占 AI DAU {display_number(ai_share)}%，AI 使用集中于多维表格。"
+        if ai_share is not None
+        else "AI DAU 为 0，无法计算多维表格 AI 占比，不作集中度判断。"
+    )
+    helpdesk_stickiness = safe_percent(m["helpdesk_dau"], m["helpdesk_wau"])
+    helpdesk_insight = (
+        f"服务台 DAU/WAU 为 {display_number(helpdesk_stickiness)}%，"
+        f"机器人闭环率为 {display_number(m['bot_finish_rate'])}%，反映日常使用粘性与自动闭环结构。"
+        if helpdesk_stickiness is not None
+        else f"服务台 WAU 为 0，无法计算 DAU/WAU；机器人闭环率为 {display_number(m['bot_finish_rate'])}%。"
+    )
+    base_relation = relation(
+        "多维表格渗透", m["base_dau_rate_avg_7workday"],
+        "IM 渗透", m["im_dau_penetration_rate"]
+    )
+    teampedia_suffix = (
+        "，自建词条尚未形成供给。"
+        if m["self_build_teampedia_entity_cnt"] == 0
+        else f"，已有 {display_number(m['self_build_teampedia_entity_cnt'])} 个自建词条形成供给。"
+    )
     return [
-        f"IM 渗透与活跃率相差 {abs(m['im_dau_penetration_rate']-m['active_rate_7workday']):.0f}pp，协同入口覆盖稳定。",
+        f"{relation('IM 渗透', m['im_dau_penetration_rate'], '近 7 工作日活跃率', m['active_rate_7workday'])}，呈现协同入口覆盖与持续活跃的差距。",
         meeting_insight,
-        f"文档与 Wiki 渗透相差 {abs(m['doc_view_dau_penetration_rate']-m['wiki_dau_penetration_rate']):.0f}pp，内容消费路径接近。",
-        f"多维表格渗透低于 IM {m['im_dau_penetration_rate']-m['base_dau_rate_avg_7workday']:.0f}pp，但已覆盖多数活跃用户。",
-        f"搜索渗透高于词典 {m['search_dau_penetration_rate']-m['teampedia_dau_penetration_rate']:.0f}pp，自建词条仍为空白。",
-        f"多维表格 AI 占 AI DAU {m['base_ai_dau']/m['ai_dau']*100:.0f}%，Aily 尚未形成日活。",
-        f"DAU/WAU 为 {m['helpdesk_dau']/m['helpdesk_wau']*100:.0f}%，机器人闭环率达到 {m['bot_finish_rate']:.0f}%。",
+        f"{relation('文档查看渗透', m['doc_view_dau_penetration_rate'], 'Wiki 渗透', m['wiki_dau_penetration_rate'])}，反映两类内容消费路径的覆盖差异。",
+        f"{base_relation}，反映业务应用与基础协同入口的覆盖差距。",
+        f"{relation('搜索渗透', m['search_dau_penetration_rate'], '词典渗透', m['teampedia_dau_penetration_rate'])}{teampedia_suffix}",
+        ai_insight,
+        helpdesk_insight,
     ]
 
 
@@ -168,18 +234,37 @@ def text(x, y, value, size, fill, anchor="start", weight=400):
 def validate(data):
     for key in FIELD_SPECS:
         n(data, key)
+        if FIELD_SPECS[key][1] == "%" and not 0 <= n(data, key) <= 100:
+            raise ValueError(f"{key} 必须使用 0_to_100 百分比口径")
     for key in ["customer_name", "tenant_name", "fcode", "review_month", "suite", "industry"]:
         if not data.get(key):
             raise ValueError(f"缺少 {key}")
     if not str(data["fcode"]).startswith(("F", "L")):
         raise ValueError("fcode 格式错误")
+    if data.get("percent_scale") != "0_to_100":
+        raise ValueError("percent_scale 必须明确为 0_to_100")
+    source_snapshot = data.get("source_snapshot")
+    if not isinstance(source_snapshot, dict):
+        raise ValueError("缺少 source_snapshot")
+    for key in ("queried_at", "fcode", "normalized_response_sha256"):
+        if not source_snapshot.get(key):
+            raise ValueError(f"source_snapshot 缺少 {key}")
+    if source_snapshot["fcode"] != data["fcode"]:
+        raise ValueError("source_snapshot.fcode 与主租户 F 码不一致")
+    if not isinstance(source_snapshot["normalized_response_sha256"], str) or len(
+        source_snapshot["normalized_response_sha256"]
+    ) != 64 or any(c not in "0123456789abcdefABCDEF" for c in source_snapshot["normalized_response_sha256"]):
+        raise ValueError("source_snapshot.normalized_response_sha256 必须是 64 位 SHA256")
     for key, item in data.get("extra_metrics", {}).items():
         if key not in OPTIONAL_FIELD_SPECS:
             raise ValueError(f"未注册的扩展字段：{key}")
         if not isinstance(item, dict) or item.get("source") != "c360":
             raise ValueError(f"{key} 必须包含 source=c360")
-        if not isinstance(item.get("value"), (int, float)):
-            raise ValueError(f"{key}.value 必须是数字")
+        value = item.get("value")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"{key}.value 必须是有限 JSON 数字")
+        if OPTIONAL_FIELD_SPECS[key][1] == "%" and not 0 <= value <= 100:
+            raise ValueError(f"{key}.value 必须使用 0_to_100 百分比口径")
 
 
 def render(data, out_dir):
@@ -269,11 +354,11 @@ def render(data, out_dir):
         )
 
     core_observations = [
-        f"即时协同覆盖稳定：IM DAU {n(data, 'im_dau'):,.0f} 人，渗透率 {n(data, 'im_dau_penetration_rate'):.0f}%。",
-        f"会议使用规模可复核：VC DAU {n(data, 'vc_dau'):,.0f} 人，{n(data, 'vc_meeting_cnt'):,.0f} 场会议覆盖 {n(data, 'join_meeting_ucnt'):,.0f} 人次。",
-        f"内容与知识库使用接近：文档查看渗透率 {n(data, 'doc_view_dau_penetration_rate'):.0f}%，Wiki 渗透率 {n(data, 'wiki_dau_penetration_rate'):.0f}%。",
-        f"多维表格使用深入：渗透率 {n(data, 'base_dau_rate_avg_7workday'):.0f}%，自动化运行 {n(data, 'bitable_automation_run'):,.0f} 次。",
-        f"AI 已形成基础使用：AI DAU {n(data, 'ai_dau'):,.0f} 人，其中多维表格 AI DAU {n(data, 'base_ai_dau'):,.0f} 人。",
+        f"即时协同：IM DAU {display_number(n(data, 'im_dau'))} 人，渗透率 {display_number(n(data, 'im_dau_penetration_rate'))}%。",
+        f"会议协同：VC DAU {display_number(n(data, 'vc_dau'))} 人，{display_number(n(data, 'vc_meeting_cnt'))} 场会议对应 {display_number(n(data, 'join_meeting_ucnt'))} 人次。",
+        f"内容沉淀：文档查看渗透率 {display_number(n(data, 'doc_view_dau_penetration_rate'))}%，Wiki 渗透率 {display_number(n(data, 'wiki_dau_penetration_rate'))}%。",
+        f"多维表格：渗透率 {display_number(n(data, 'base_dau_rate_avg_7workday'))}%，自动化运行 {display_number(n(data, 'bitable_automation_run'))} 次。",
+        f"AI 赋能：AI DAU {display_number(n(data, 'ai_dau'))} 人，其中多维表格 AI DAU {display_number(n(data, 'base_ai_dau'))} 人。",
     ]
     core_xml = "".join(f"<li>{escape(item)}</li>" for item in core_observations)
 
@@ -290,7 +375,7 @@ def render(data, out_dir):
 <h1>三、七模块数据回顾</h1>
 {"".join(sections)}
 <hr/><callout emoji="📌" background-color="light-gray" border-color="gray">
-<p><b>数据完整性说明：</b>正文包含 35 个必需字段及本次 C360 返回并通过字段注册表校验的扩展字段。每项指标均列出来源字段；未提供的 Aeolus 指标不作为缺失，也不参与判断。</p>
+<p><b>数据完整性说明：</b>正文包含 {len(FIELD_SPECS)} 个必需字段（会议九项完整）及本次 C360 返回并通过字段注册表校验的扩展字段。每项指标均列出来源字段；未提供的 Aeolus 指标不作为缺失，也不参与判断。</p>
 <p>文档不包含无来源数据、行业对标、原因假设、风险判断或销售建议。</p>
 </callout>'''
     (out_dir / "document.xml").write_text(doc)
@@ -317,16 +402,17 @@ https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=124
     handoff_path.write_text(aeolus_request)
     receipt = {
         "generator": "customer-business-review/render-snapshot.py",
-        "content_version": "3.0.2",
+        "content_version": CONTENT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "c360_snapshot",
-        "field_count": len(FIELD_SPECS) + len(data.get("extra_metrics", {})),
+        "field_count": len(set(data.get("metrics", {})) | set(data.get("extra_metrics", {}))),
         "required_field_count": len(FIELD_SPECS),
-        "optional_field_count": len(data.get("extra_metrics", {})),
-        "display_rounding": "half_even_integer",
+        "optional_field_count": len(set(data.get("extra_metrics", {})) - set(FIELD_SPECS)),
+        "display_rounding": "ROUND_HALF_UP_integer",
         "raw_precision_preserved": True,
         "source_snapshot": data.get("source_snapshot"),
-        "input_sha256": hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+        "input_sha256": canonical_sha256(data),
+        "source_sha256": data["source_snapshot"]["normalized_response_sha256"].lower(),
         "board_sha256": hashlib.sha256(svg_path.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256((out_dir / "document.xml").read_bytes()).hexdigest(),
         "aeolus_request_sha256": hashlib.sha256(handoff_path.read_bytes()).hexdigest(),

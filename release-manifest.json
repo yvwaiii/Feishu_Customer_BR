@@ -1,7 +1,7 @@
 {
   "skill_name": "customer-business-review",
-  "content_version": "3.0.2",
-  "minimum_skillhub_version": "1.1.2",
+  "content_version": "3.1.0",
+  "minimum_skillhub_version": "1.2.0",
   "required_files": [
     "SKILL.md",
     "README.md",
@@ -15,10 +15,39 @@
     "scripts/bootstrap-lark-c360.sh",
     "scripts/cache-c360-artifact.sh"
   ],
+  "package_files": [
+    ".gitignore",
+    "README.md",
+    "SKILL.md",
+    "assets/board-preview.png",
+    "references/aeolus-browser-runbook.md",
+    "references/aeolus-handoff.md",
+    "references/bootstrap-and-recovery.md",
+    "references/data-and-insights.md",
+    "references/deliverables-and-lifecycle.md",
+    "references/deterministic-delivery.md",
+    "references/reference-br-and-completeness.md",
+    "references/runtime-capability-and-notification.md",
+    "references/tool-routing.md",
+    "references/workflow.md",
+    "release-manifest.json",
+    "scripts/audit-snapshot.py",
+    "scripts/bootstrap-lark-c360.sh",
+    "scripts/cache-c360-artifact.sh",
+    "scripts/package-release.py",
+    "scripts/preflight-release.py",
+    "scripts/query-fields.py",
+    "scripts/render-snapshot.py",
+    "scripts/validate-snapshot-input.py",
+    "tests/test_snapshot_pipeline.py"
+  ],
   "delivery_contract": {
     "snapshot_renderer": "scripts/render-snapshot.py",
     "snapshot_auditor": "scripts/audit-snapshot.py",
     "required_receipt": "delivery-receipt.json",
+    "required_field_count": 41,
+    "meeting_required_field_count": 9,
+    "display_rounding": "ROUND_HALF_UP_integer",
     "remote_board_image_nodes": 0,
     "remote_board_icon_groups_min": 7
   }

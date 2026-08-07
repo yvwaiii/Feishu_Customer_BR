@@ -66,7 +66,7 @@
 - 七个模块全部采用相同宽度的通栏卡片，服务台作为第七行，底部再放独立数据口径卡；
 - 每张通栏卡的数据区严格切分为 5 个等宽列；所有模块使用相同的列中心坐标；
 - 每列的指标名称和指标值使用 `text-anchor="middle"`，共享同一中心轴；
-- 指标名称只写名称，不带括号单位；单位必须跟随数字写入同一个值文本节点，例如 `648 人`、`46.73 分钟`、`542,600 次`；
+- 指标名称只写名称，不带括号单位；单位必须跟随数字写入同一个值文本节点，例如 `648 人`、`47 分钟`、`542,600 次`；
 - 百分比的 `%` 属于数值本身，不拆成独立文本；禁止出现“上方纯数字、单位另放标签”的布局；
 - 七个模块必须各有一个可见的无底框线性 SVG 图标，使用 `<path>`、`<circle>`、`<rect>` 等矢量节点；写入后在 raw 节点和预览图中确认图标存在；
 - 避免浅色大面积模块底、彩虹配色、仪表盘式迷你卡墙、大阴影和多余英文标签；
@@ -81,16 +81,16 @@
 快照模式只要求当前输入或 C360 返回的七模块字段。以下字段足以生成完整七模块回顾：
 
 - 即时协同：`active_rate_7workday`、`activate_rate`、`active_duration_pavg_7workday`、`im_dau`、`im_dau_penetration_rate`；
-- 会议协同：`vc_meeting_active_duration_pavg_val`、`minutes_dau_penetration_rate`、`vc_ai_minutes_dau_penetration_rate`；
+- 会议协同：`vc_dau`、`vc_dau_penetration_rate`、`vc_meeting_cnt`、`join_meeting_ucnt`、`vc_meeting_active_duration_pavg_val`、`minutes_dau`、`minutes_dau_penetration_rate`、`vc_ai_dau`、`vc_ai_minutes_dau_penetration_rate`；
 - 内容沉淀：`doc_independent_create_fcnt`、`doc_view_dau_penetration_rate`、`tenant_used_wiki_space_cnt`、`wiki_dau`、`wiki_dau_penetration_rate`；
 - 多维表格：`bitable_independent_create_fcnt`、`base_rownum_over15000_fcnt`、`bitable_automation_run`、`base_dashboard_cnt`、`base_dau_rate_avg_7workday`；
 - 知识管理：`cansearch_pv_per_user`、`knowledge_ai_pavg_use_cnt`、`search_dau_penetration_rate`、`teampedia_dau_penetration_rate`、`self_build_teampedia_entity_cnt`；
 - AI 赋能：`ai_dau`、`aily_dau`、`aily_buddy_dau`、`base_ai_dau`、`miaoda_app_dau`、`miaoda_claw_dau`；
 - 服务台：`helpdesk_cnt`、`tenant_used_normal_helpdesks_all_cnt`、`helpdesk_dau`、`helpdesk_wau`、`ticket_cnt`、`bot_finish_rate`。
 
-某模块至少有 3 个有效可解释字段即可展示。不得要求快照输入补充以下增强字段：
+会议模块必须满足上述九项字段合同；其余模块至少有 3 个有效可解释字段即可通过初步覆盖门禁，正式生成前仍须补齐 41 个必需字段。不得要求快照输入补充以下增强字段：
 
-- 会议数、参会人次、会议总时长；
+- 会议总时长、趋势或同比；
 - 统计期文档或多维表格累计创建数；
 - AI ARPU、AI 用量、AI ARR；
 - 时间趋势、前期对比或同比。

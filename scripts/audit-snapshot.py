@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import html
 import json
 import re
 import sys
 from collections import Counter
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -12,6 +14,8 @@ BANNED_WORDS = [
     "同构", "抓手", "潜力", "提升空间", "一家独大", "最后一公里",
     "续约", "增购", "重度办公", "已替代", "原因是",
 ]
+
+CONTENT_VERSION = "3.1.0"
 
 MEETING_REQUIRED = [
     "vc_dau",
@@ -31,6 +35,49 @@ def fail(errors):
     sys.exit(1)
 
 
+def canonical_sha256(value):
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def rounded_text(value):
+    rounded = Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return f"{int(rounded):,}"
+
+
+def normalize_visible(value):
+    value = html.unescape(str(value))
+    value = re.sub(r"<[^>]+>", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def collect_strings(value):
+    result = []
+    if isinstance(value, dict):
+        for child in value.values():
+            result.extend(collect_strings(child))
+    elif isinstance(value, list):
+        for child in value:
+            result.extend(collect_strings(child))
+    elif isinstance(value, str):
+        normalized = normalize_visible(value)
+        if normalized:
+            result.append(normalized)
+    return result
+
+
+def compare_values(expected, actual, target, errors):
+    expected_counts = Counter(normalize_visible(value) for value in expected)
+    actual_counts = Counter(actual)
+    for value, count in expected_counts.items():
+        if actual_counts[value] < count:
+            errors.append(
+                f"{target}逐值比对失败：{value}，期望 {count} 次，实际 {actual_counts[value]} 次"
+            )
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True)
@@ -38,8 +85,9 @@ def main():
     p.add_argument("--xml", required=True)
     p.add_argument("--remote-doc-json")
     p.add_argument("--remote-board-raw")
-    p.add_argument("--receipt")
-    p.add_argument("--aeolus-request")
+    p.add_argument("--receipt", required=True)
+    p.add_argument("--aeolus-request", required=True)
+    p.add_argument("--source-json", "--source", dest="source_json", required=True)
     args = p.parse_args()
 
     data = json.loads(Path(args.input).read_text())
@@ -56,6 +104,15 @@ def main():
             errors.append(f"source_snapshot 缺少 {key}")
     if source_snapshot.get("fcode") and source_snapshot["fcode"] != data.get("fcode"):
         errors.append("source_snapshot.fcode 与主租户 F 码不一致")
+    source_sha = source_snapshot.get("normalized_response_sha256")
+    if source_sha and not re.fullmatch(r"[0-9a-fA-F]{64}", str(source_sha)):
+        errors.append("source_snapshot.normalized_response_sha256 不是有效 SHA256")
+    if args.source_json:
+        actual_source_sha = canonical_sha256(
+            json.loads(Path(args.source_json).read_text())
+        )
+        if str(source_sha).lower() != actual_source_sha:
+            errors.append("source_snapshot.normalized_response_sha256 与规范化 source JSON 不匹配")
     for key in MEETING_REQUIRED:
         if key not in data.get("metrics", {}) and key not in extra_metrics:
             errors.append(f"会议模块缺少 C360 核心字段：{key}")
@@ -90,7 +147,7 @@ def main():
         if value not in svg:
             errors.append(f"画板缺少同行单位：{value.strip()}")
     rendered_values = re.findall(r'font-size="28"[^>]*>(.*?)</text>', svg)
-    rendered_values += re.findall(r"<td><b>(.*?)</b></td>", xml)
+    rendered_values += re.findall(r"<td[^>]*>.*?<b>(.*?)</b>.*?</td>", xml, flags=re.S)
     for value in rendered_values:
         if re.search(r"\d+\.\d+", value):
             errors.append(f"展示值不是整数：{value}")
@@ -104,7 +161,7 @@ def main():
     for value in metrics.values():
         if isinstance(value, (int, float)):
             allowed_numbers.add(f"{value}")
-            allowed_numbers.add(f"{value:,.0f}")
+            allowed_numbers.add(rounded_text(value))
             allowed_numbers.add(f"{value:.2f}")
             allowed_numbers.add(f"{value:,.2f}")
             allowed_numbers.add(f"{value:.2f}%")
@@ -118,8 +175,8 @@ def main():
         else:
             allowed_numbers.update(re.findall(r"\d[\d,.]*", str(value)))
             if isinstance(value, (int, float)):
-                allowed_numbers.add(f"{value:,.0f}")
-                allowed_numbers.add(f"{value:.0f}")
+                allowed_numbers.add(rounded_text(value))
+                allowed_numbers.add(rounded_text(value).replace(",", ""))
     collect_scalars(data)
     scalar_blob = json.dumps(data, ensure_ascii=False)
     allowed_numbers.update({"7", "180", "1.5", "01", "02", "03", "04", "05", "06", "07"})
@@ -130,8 +187,10 @@ def main():
         normalized = token.rstrip("%").replace(",", "")
         if token in allowed_numbers or normalized in {x.rstrip("%").replace(",", "") for x in allowed_numbers}:
             continue
-        # 派生差值/占比允许两位小数，由固定渲染器生成；外部未知整数不允许。
         if "." in normalized:
+            if normalized == "1.5":
+                continue
+            errors.append(f"展示文本包含未取整小数：{token}")
             continue
         if len(normalized) <= 2:
             continue
@@ -142,6 +201,21 @@ def main():
         content = remote["data"]["document"]["content"]
         if "&lt;svg" in content or "&lt;rect" in content:
             errors.append("云文档回读包含转义 SVG")
+        remote_plain = normalize_visible(content)
+        doc_markers = [data["customer_name"], data["tenant_name"], data["fcode"]]
+        doc_markers += [normalize_visible(value) for value in re.findall(r"<h2>(.*?)</h2>", xml)]
+        doc_markers += [normalize_visible(value) for value in re.findall(r"<td>(.*?)</td>", xml)]
+        for marker in doc_markers:
+            if marker and marker not in remote_plain:
+                errors.append(f"云文档缺少内容：{marker}")
+        local_doc_values = re.findall(r"<td[^>]*>.*?<b>(.*?)</b>.*?</td>", xml, flags=re.S)
+        remote_doc_values = re.findall(r"<td[^>]*>.*?<b>(.*?)</b>.*?</td>", html.unescape(content), flags=re.S)
+        compare_values(
+            local_doc_values,
+            [normalize_visible(value) for value in remote_doc_values],
+            "云文档",
+            errors,
+        )
     if args.remote_board_raw:
         raw = json.loads(Path(args.remote_board_raw).read_text())
         types = Counter(node.get("type") for node in raw.get("nodes", []))
@@ -151,6 +225,15 @@ def main():
             errors.append("云画板图标分组少于 7")
         if types.get("connector", 0) < 20:
             errors.append("云画板矢量线条节点不足")
+        local_board_values = re.findall(
+            r"<text\b[^>]*>(.*?)</text>", svg, flags=re.S
+        )
+        compare_values(
+            local_board_values,
+            collect_strings(raw),
+            "云画板",
+            errors,
+        )
 
     if errors:
         fail(errors)
@@ -158,6 +241,9 @@ def main():
         receipt_path = Path(args.receipt)
         receipt = json.loads(receipt_path.read_text())
         expected = {
+            "input_sha256": canonical_sha256(data),
+            "content_version": CONTENT_VERSION,
+            "source_sha256": str(source_sha).lower(),
             "board_sha256": hashlib.sha256(Path(args.svg).read_bytes()).hexdigest(),
             "document_sha256": hashlib.sha256(Path(args.xml).read_bytes()).hexdigest(),
         }
@@ -176,6 +262,14 @@ def main():
                 fail([f"Aeolus 邀请缺少内容：{marker}"])
         receipt["local_audit"] = "passed"
         receipt["remote_audit"] = "passed" if args.remote_doc_json and args.remote_board_raw else "pending"
+        if args.remote_doc_json:
+            remote = json.loads(Path(args.remote_doc_json).read_text())
+            document = remote["data"]["document"]
+            receipt["remote_document_id"] = document.get("document_id")
+            token_match = re.search(r'<whiteboard[^>]+token="([^"]+)"', document.get("content", ""))
+            receipt["remote_whiteboard_token"] = token_match.group(1) if token_match else None
+            if not receipt["remote_document_id"] or not receipt["remote_whiteboard_token"]:
+                fail(["远端文档 ID 或画板 token 绑定失败"])
         if args.remote_board_raw:
             receipt["remote_node_types"] = dict(Counter(
                 node.get("type") for node in json.loads(Path(args.remote_board_raw).read_text()).get("nodes", [])

@@ -2,7 +2,9 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`3.0.2`
+> 当前版本：`3.1.0`
+>
+> SkillHub 版本不得低于 `1.2.0`。
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -89,11 +91,19 @@ Aily 会先生成 C360 快照版并返回链接，同时只提醒一次如何导
 
 1. 打开仓库的 [Releases](https://github.com/yvwaiii/Feishu_Customer_BR/releases)；
 2. 下载 `customer-business-review-skill.zip`；
-3. 解压到工作区的 `.trae/skills/` 目录。
+3. 删除旧目录后解压到工作区的 `.trae/skills/` 目录，避免旧文件残留：
+
+```bash
+rm -rf .trae/skills/customer-business-review
+unzip customer-business-review-skill.zip -d .trae/skills/
+python3 .trae/skills/customer-business-review/scripts/preflight-release.py
+```
+
+预检输出中的 `content_version` 必须为 `3.1.0`，`minimum_skillhub_version` 必须为 `1.2.0`；不一致时停止使用并重新安装。
 
 ### Aily 智能伙伴
 
-将 Skill 解压到 `~/.aily/workspace/skills/customer-business-review/`。首次运行时，Skill 会从 C360 官方 TOS 安装 CLI 到 `~/.aily/workspace`，不会访问公共 npm registry。
+先删除旧目录，再将 Skill 解压到 `~/.aily/workspace/skills/customer-business-review/`。首次运行时，Skill 会从 C360 官方 TOS 安装 CLI 到 `~/.aily/workspace`，不会访问公共 npm registry。解压后同样运行 `scripts/preflight-release.py` 验证内容版和最低 SkillHub 版本。
 
 官方手动安装命令：
 
@@ -113,15 +123,27 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 .trae/skills/customer-business-review/
 ├── SKILL.md
 ├── README.md
-└── references/
+├── release-manifest.json
+├── references/
+└── scripts/
 ```
 
 ### 从源码安装
 
-将仓库中的 `SKILL.md`、`README.md` 和 `references/` 复制到：
+先清理目标目录，再复制仓库 allowlist 中的全部文件；不得只复制 `SKILL.md` 和 `references/`，否则确定性渲染、审计和版本校验不可用：
 
 ```text
 .trae/skills/customer-business-review/
+```
+
+推荐从仓库根目录生成确定性安装包：
+
+```bash
+python3 scripts/package-release.py \
+  --output /tmp/customer-business-review-skill.zip
+rm -rf .trae/skills/customer-business-review
+unzip /tmp/customer-business-review-skill.zip -d .trae/skills/
+python3 .trae/skills/customer-business-review/scripts/preflight-release.py
 ```
 
 ## 使用方法
@@ -215,10 +237,14 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 │   ├── audit-snapshot.py
 │   ├── bootstrap-lark-c360.sh
 │   ├── cache-c360-artifact.sh
+│   ├── package-release.py
 │   ├── preflight-release.py
 │   ├── query-fields.py
 │   ├── render-snapshot.py
 │   └── validate-snapshot-input.py
+├── tests/
+│   └── test_snapshot_pipeline.py
+├── release-manifest.json
 └── references/
     ├── aeolus-browser-runbook.md
     ├── bootstrap-and-recovery.md
@@ -236,8 +262,9 @@ Aily 的登录态、C360 skills 和持久化数据均保存在 `~/.aily/workspac
 
 ```bash
 python3 scripts/preflight-release.py
+python3 -m unittest discover -s tests -v
 ```
 
-SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.0.2`，对应 SkillHub 版本不得低于 `1.1.2`。
+SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.1.0`，对应 SkillHub 版本不得低于 `1.2.0`。
 
 每次正式交付还必须生成 `delivery-receipt.json`。最终回复需要报告内容版本、输入哈希前 12 位、本地审计和云端审计状态；没有回执时不得声称质量门禁已通过。

@@ -43,7 +43,7 @@ python3 <当前Skill根目录>/scripts/validate-snapshot-input.py <input.md>
 3. 启动查询并确认成功。
 4. 桌面环境优先使用 Agent 内置浏览器；没有时使用可操作用户 Chrome 的外部浏览器能力。
 5. Aily 或云端沙箱访问内网失败时，立即跳过 Aeolus，使用 C360 快照模式继续。
-6. 只有用户明确要求增强数据时，才提醒用户导出两期数据。
+6. 交付 C360 快照版时必须主动提醒一次用户可补充 Aeolus 两期数据；用户未提供时不阻塞，也不重复提醒。
 7. 禁止用客户名称、租户名称或其他标识替代 F 码。
 
 ## 4. 数据收集
@@ -62,11 +62,11 @@ python3 <当前Skill根目录>/scripts/validate-snapshot-input.py <input.md>
 
 1. 按业务板块关联全部指标。
 2. 生成 coverage matrix，检查有效核心字段是否完整。
-3. 快照模式只按 [数据源与工具路由](tool-routing.md) 中的 C360 七模块字段检查；不要求会议数、参会人次、总时长、AI ARPU 等增强字段。
-4. 快照模式按 [确定性交付流水线](deterministic-delivery.md) 把 35 个必需字段及全部已注册 C360 扩展字段写入 JSON，运行 `render-snapshot.py`；不得自行删减会议等模块数据，不得编写 SVG。
+3. 快照模式按 [数据源与工具路由](tool-routing.md) 中的 C360 七模块字段检查；会议字段合同必须包含固定九项，但不要求会议总时长、AI ARPU、趋势或同比等增强字段。
+4. 快照模式按 [确定性交付流水线](deterministic-delivery.md) 把 41 个必需字段及全部已注册 C360 扩展字段写入 JSON，运行 `render-snapshot.py`；不得自行删减会议等模块数据，不得编写 SVG。
 5. 运行 `audit-snapshot.py` 和 whiteboard-cli `--check`，失败时停止。
 6. 按 [数据源与工具路由](tool-routing.md) 通过生成的 XML 创建文档和画板；不得调用不存在的 `whiteboard +create`。
 7. 创建“飞书整体使用情况回顾”文档，并取得文档 URL、whiteboard block ID 和 token。
-8. 回读画板图片、raw 节点和文档 XML，再次运行审计；raw 中 `image>0` 时必须重做。
+8. 回读画板图片、raw 节点和文档 XML，再次运行审计；逐值比较远端文档/画板与本地生成物，任一值不一致或 raw 中 `image>0` 时必须重做。
 9. 返回文档 URL 和 `<文档URL>#<whiteboard block_id>` 画板定位链接。
 10. 校验通过后结束，不继续生成任何后续章节或自动化。
