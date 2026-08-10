@@ -2,7 +2,7 @@
 
 ## C360 CLI 自举
 
-运行 Skill 后先检测：
+仅当当前输入不足、确实需要 C360 时检测；不得把 CLI、环境、授权和 schema 探测作为每次启动的固定前置：
 
 ```bash
 command -v lark-c360
@@ -80,25 +80,27 @@ Skill 支持以下任一输入：
 
 ### 客户名称路径
 
-1. `account search` 获取唯一客户。
-2. 查询该客户下全部关联租户。
-3. 按 DAU 选主租户并取得 F 码。
+1. 单次 `account search --json` 获取唯一客户及其 `entity_id`，保留完整原始 envelope。
+2. 单次 account-scoped `tenant/list` 获取完整候选并保留原始 envelope；请求上下文必须记录为 `tenant_list_scope={"account_id":"<account>","account_scoped":true}`，不得附带 tenant keyword；字段必须包含 `is_primary_tenant` 和 `x7wd_avg_dau_suite`。
+3. 把两份 envelope 与 `tenant_list_scope` 直接传给 `identity_resolver.py`。resolver 要求 scope account_id 与唯一 account search `entity_id` 相等，并对完整 account-scoped 列表按主租户标记、DAU 和稳定键排序取得主租户 F 码；不再按 tenant `company` 字段二次筛选。
+4. 对主租户执行一次 `tenant metrics get`。
 
 ### F 码路径
 
-1. 用 `tenant list --keyword <F码>` 查询，并显式请求 `display_id`、`display_name`、`tenant_id`、`account`、`x7wd_avg_dau_suite`。
-2. 只接受 `display_id` 与输入 F 码完全一致的唯一租户。
-3. 从租户记录读取所属 account，再查询客户详情和该客户下全部关联租户。
-4. 仍需按全部关联租户 DAU 验证该 F 码是否为主租户。
-5. 若输入 F 码不是 DAU 最高租户，使用 DAU 最高租户继续，并向 CSM 说明自动切换结果。
+1. 禁止使用 tenant keyword。先通过 account 能力把 F 码解析到唯一 account_id。
+2. 查询该 account_id 的完整 account-scoped `tenant/list`，显式请求 `display_id`、`display_name`、`tenant_id`、`is_primary_tenant`、`x7wd_avg_dau_suite`，并记录 `tenant_list_scope`。
+3. 运行 resolver；只有 scope account_id 与 account 相等且列表完整时才接受结果。
+4. resolver 对完整列表按 `is_primary_tenant`、DAU 与稳定次级键排序，排序第一名是主租户。若输入 F 码不是该租户，使用 resolver 结果继续并向 CSM 说明自动切换。
 
 租户显示名与所属客户名可能不同。两者必须分字段保存和展示，不得因为名称不同而否定关联，也不得把租户名覆盖客户正式名称。
 
 ## C360 查询恢复
 
+用户明确要求刷新或当前运行已开始 C360 刷新时，跳过本节缓存复用。旧消息、旧任务 resource、任务级 artifact 与持久化副本不得为本次响应补任何身份或指标值；只接受本轮 company reference、tenant/list 和单次 metrics 响应。
+
 ### 断点续跑
 
-启动时检查当前工作目录的 `artifacts/`，并检查持久化目录。若存在本次客户的 C360 数据存档：
+仅当当前输入不足、用户未要求刷新且尚未发出 C360 命令时，检查当前工作目录的 `artifacts/` 和持久化目录。若存在本次客户的 C360 数据存档：
 
 1. 读取存档中的客户名称、主租户名称、F 码、查询时间和七模块字段；
 2. 与当前输入交叉校验；
@@ -134,7 +136,7 @@ Aily 默认 Skill 根目录为：
 
 不要假设当前工作目录就是 Skill 根目录。
 
-- 字段不确定：先查 schema/meta，修正后最多重试一次。
+- 字段或参数被业务命令明确报错：此时才查一次对应 schema/meta，修正后最多重试一次；成功快速路径禁止预查 schema/meta。
 - `code=100001` 或安全策略拦截：立即停止，不尝试绕过。
 - 设备证书错误：严格按 `c360-shared` 处理，不移除证书要求。
 - 客户、主租户、F 码无法确认：停止 BR 生成，让 CSM 补充。

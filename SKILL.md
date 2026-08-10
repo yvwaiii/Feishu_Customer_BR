@@ -1,6 +1,6 @@
 ---
 name: "customer-business-review"
-version: "3.1.0"
+version: "3.2.0"
 description: "生成客户飞书整体使用情况回顾与数据洞察画板。用户提到回访、BR、Business Review、客户复盘、使用回顾或主租户近 180 天分析等相近意图时自动调用。"
 ---
 
@@ -21,7 +21,7 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 1. `customer_name` 或 `tenant_fcode` 至少提供一项；两者都有时交叉校验。
 2. 可选 `review_reason`：仅用于理解回顾背景，不进入数据画板。
 3. 可选 `review_month`：计划回访月份；缺失时使用当前月份。
-4. 用户消息、任务评论或 resource 中已提供的客户身份、主租户和七模块结构化字段均视为有效输入。
+4. 输入 JSON 必须包含由 `scripts/identity_resolver.py` 生成的 `identity_ledger`；renderer 与 auditor 会强制校验 account、tenant_list_scope、完整候选列表、排序结果和顶层身份字段。
 
 输入优先级：
 
@@ -32,18 +32,20 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 
 正文数据已覆盖七模块时立即进入 coverage matrix 和产出，不得要求用户再次粘贴，不得因 resource 不可读而忽略正文。
 
-先执行 [环境检测、安装与恢复](references/bootstrap-and-recovery.md) 和 [运行能力检测与用户提醒](references/runtime-capability-and-notification.md)。若未安装 `lark-c360`，必须使用 Skill 内置脚本从 C360 官方 TOS 安装；公共 npm 404 不是终止条件。启动时识别运行环境，并选择 C360 快照模式或 C360 + Aeolus 增强模式。
+用户明确要求“刷新”或本次已启动 C360 刷新时，旧消息、任务评论、resource、持久化副本和缓存只能用于定位，不得为本次 C360 响应补字段或补值。身份账本和指标必须全部来自本次查询；缺失即报错。
 
-若输入 F 码，先精确反查租户和所属客户，再查询该客户下全部租户并按 DAU 验证主租户。租户显示名与客户正式名称分开保存。客户无法唯一匹配时，要求 CSM 补充或选择，并停止其他动作。
+启动时只读取本文件；按当前分支需要再读取对应 reference，不得预读全部文档或先做 schema/meta、能力枚举等无关探测。需要 C360 时仅做 CLI/授权的最小必要检查；若未安装 `lark-c360`，使用内置脚本从 C360 官方 TOS 安装。
+
+主租户解析必须运行 `scripts/identity_resolver.py`：把 `lark-c360 account search --json`、完整 account-scoped `/anchor/api/entity/tenant/list` 原始 JSON envelope 和 `tenant_list_scope` 直接传入。scope 必须满足 `account_id==account search entity_id`、`account_scoped=true` 且不得包含 tenant keyword；resolver 不按 tenant `company` 字段筛选，而是对完整列表按 `is_primary_tenant` 降序、`x7wd_avg_dau_suite` 降序及 F 码、tenant_id、显示名稳定升序排序。租户显示名与客户正式名称分开保存。客户无法唯一匹配时，要求 CSM 补充或选择，并停止其他动作。
 
 ## 强制执行顺序
 
-严格遵循 [执行流程](references/workflow.md)、[数据源与工具路由](references/tool-routing.md)、[运行能力检测与用户提醒](references/runtime-capability-and-notification.md)、[Aeolus 浏览器自动化手册](references/aeolus-browser-runbook.md) 和 [参考 BR 与数据完整性门禁](references/reference-br-and-completeness.md)：
+按任务进度按需读取 [执行流程](references/workflow.md)、[数据源与工具路由](references/tool-routing.md) 及对应交付 reference；不得把通读所有 reference 作为启动前置：
 
-1. 在 C360 唯一匹配客户，取得关联租户、DAU、主租户与 F 码。
-2. 以 DAU 最高的关联租户作为唯一主租户；其他租户不得参与汇总、对比或归因。
+1. 在 C360 account search 取得唯一 `entity_id`，再取得该 account_id 的完整 account-scoped tenant/list；禁止 tenant keyword。
+2. 校验 `tenant_list_scope.account_id==account` 后，对完整列表确定性排序，以排序第一名作为唯一主租户；不得按 tenant `company` 字段筛选。
 3. 先补齐 C360 七模块固定字段，并确认是否足以生成当前使用快照。
-4. 若运行环境可访问 Aeolus，或用户提供 Aeolus 导出，则用主租户 **F 码**获取滚动 180 天累计、日均和对比期指标；不得用客户名或租户名替代 F 码。
+4. 若运行环境可访问 Aeolus，或用户提供 Aeolus 导出，则用主租户 **F 码**获取滚动 180 天累计、日均指标，并尽可能获取可选对比期；不得用客户名或租户名替代 F 码。
 5. 建立 coverage matrix，按七模块组合分析全部有效指标。
 6. C360 快照模式必须按 [确定性交付流水线](references/deterministic-delivery.md) 生成；禁止 Agent 手写 SVG、单位或洞见。没有 `delivery-receipt.json` 时禁止创建文档或返回交付链接。
 7. 回读画板和文档，确认数据、结构、口径和视觉无误后结束。
@@ -66,7 +68,10 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 - **C360 + Aeolus 增强模式**：TRAE、Codex 或其他 Agent 具备可访问内网的模拟浏览器、内置浏览器或用户 Chrome 自动化时，自动操作 Aeolus；用户提供 CSV/XLSX、完整截图或已确认指标表时也可进入增强模式。
 - 不得因为 Aeolus 不可访问而反复重试、要求 Aily 接管本地浏览器，或在 C360 七模块已完整时停止整个任务。
 - Aily 按 [Aeolus 数据交接](references/aeolus-handoff.md) 只提醒一次并立即交付 C360 快照版；用户后续补充数据时再升级现有文档和画板。
-- 增强模式的当前周期以 Aeolus 最近可用数据日为结束日滚动 180 天；同比周期是紧邻的前一个 180 天。
+- 增强模式的当前周期以 Aeolus 最近可用数据日为结束日滚动 180 天；对比期可选，提供时必须是紧邻当前期之前的连续 180 天。
+- `render-snapshot.py` 只接受正式 `aeolus_snapshot` schema：主租户 F 码、当前期、规范化来源 SHA256 和 allowlist 指标为必需；`comparison_period` 及各指标的 `comparison` 值可选。Aeolus 使用独立语义键，如 `doc_create_fcnt`、`bitable_create_fcnt`、`automation_run_cnt`、`wiki_total_visit_cnt`，不得复用 C360 当前月字段键；可选增强字段包括 `ticket_cnt`、`bot_finish_rate`、`im_dau`。
+- 提供 `aeolus_snapshot` 后画板优先使用近 180 天当前期指标；有对比时文档展示当前期/对比期，无对比时仍进入增强模式并明确“未提供对比期”。两种增强路径均禁止写“未接入 Aeolus”或生成导出邀请。
+- C360 的 `bitable_automation_run` 是自动化运行额度，实际用量字段是 `tenant_current_month_bitable_workflow_instance_cnt`；内容扩展包含 `create_fcnt`。C360 画板内容模块优先 `create_fcnt`，多维表格模块优先自动化实际用量，额度不得作为核心指标。
 - 后台分析全部可用指标，画板按模块只选 3～5 个关键指标。回顾正文必须展示所有有效核心指标和完整模块数据，不受该数量限制。
 - 生成回顾文档前必须建立 coverage matrix，并按 [参考 BR 与数据完整性门禁](references/reference-br-and-completeness.md) 校验；任一有效核心字段未展示时不得宣称完成。
 - 画板默认遵循七个独立一级模块：即时协同、会议协同、内容沉淀、多维表格、知识管理、AI 赋能、服务台。知识管理不得并入 AI 赋能，内容沉淀不得替代知识管理。
@@ -108,10 +113,11 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 
 交付前逐项确认：
 
-- 已唯一匹配客户，且只分析 DAU 最高主租户。
+- 已校验 tenant_list_scope.account_id 等于 account，且只分析完整 account-scoped 列表中确定性排序第一的主租户。
+- 输入包含通过 renderer/auditor 校验的身份账本。
 - 已明确标记运行模式和数据源。
 - 若为 C360 快照模式，未出现“近 180 天累计、日均、趋势、同比”等无来源表述。
-- 若为增强模式，已使用主租户 F 码回填 Aeolus，且当前期与对比期日期正确。
+- 若为增强模式，已使用主租户 F 码回填 Aeolus，当前期日期正确；提供对比期时，两期均为连续且相邻的 180 天。
 - 文档洞见来自指标组合，事实与原因假设分离；画板不展示洞见。
 - 只有一张总画板，且画板不含归因、内部资料或风险。
 - 文档仅包含“飞书整体使用情况回顾”，没有案例、服务计划或其他后续章节。

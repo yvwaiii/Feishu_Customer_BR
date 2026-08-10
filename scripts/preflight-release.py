@@ -83,6 +83,32 @@ if contract.get("meeting_required_field_count") != 9:
     errors.append("delivery_contract.meeting_required_field_count 必须为 9")
 if contract.get("display_rounding") != "ROUND_HALF_UP_integer":
     errors.append("delivery_contract.display_rounding 必须为 ROUND_HALF_UP_integer")
+if contract.get("identity_resolver") != "scripts/identity_resolver.py":
+    errors.append("delivery_contract.identity_resolver 未登记")
+if contract.get("identity_ledger_required") is not True:
+    errors.append("delivery_contract.identity_ledger_required 必须为 true")
+if contract.get("tenant_list_scope_required") is not True:
+    errors.append("delivery_contract.tenant_list_scope_required 必须为 true")
+if contract.get("tenant_keyword_allowed") is not False:
+    errors.append("delivery_contract.tenant_keyword_allowed 必须为 false")
+expected_aeolus_fields = {
+    "automation_run_cnt", "base_dashboard_cnt", "bitable_create_fcnt",
+    "bot_finish_rate", "doc_create_fcnt", "im_dau", "join_meeting_ucnt",
+    "ticket_cnt", "vc_meeting_active_duration_pavg_val", "vc_meeting_cnt",
+    "wiki_total_visit_cnt",
+}
+if contract.get("aeolus_schema") != "aeolus_snapshot":
+    errors.append("delivery_contract.aeolus_schema 必须为 aeolus_snapshot")
+if set(contract.get("aeolus_metric_allowlist", [])) != expected_aeolus_fields:
+    errors.append("delivery_contract.aeolus_metric_allowlist 不匹配")
+if set(contract.get("aeolus_required_properties", [])) != {
+    "current_period", "fcode", "metrics", "source_sha256"
+}:
+    errors.append("delivery_contract.aeolus_required_properties 不匹配")
+if set(contract.get("aeolus_optional_properties", [])) != {
+    "comparison_period", "metrics.*.comparison"
+}:
+    errors.append("delivery_contract.aeolus_optional_properties 不匹配")
 field_result = subprocess.run(
     [sys.executable, str(root / "scripts/query-fields.py")],
     cwd=root,

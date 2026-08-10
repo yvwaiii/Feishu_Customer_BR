@@ -11,6 +11,14 @@
   "customer_name": "客户实体名称",
   "tenant_name": "主租户显示名称",
   "fcode": "FXXXXXXXXXXX",
+  "identity_ledger": {
+    "company_reference": {"account_id": "account-id"},
+    "resolved_account": {"account_id": "account-id", "customer_name": "客户实体名称"},
+    "tenant_list_scope": {"account_id": "account-id", "account_scoped": true},
+    "tenant_candidates": [],
+    "main_tenant": {},
+    "resolution": {}
+  },
   "review_month": "YYYY-MM",
   "suite": "套件名称",
   "industry": "行业",
@@ -19,6 +27,8 @@
   }
 }
 ```
+
+`identity_ledger` 禁止手写，必须由 `scripts/identity_resolver.py` 基于本轮 account search、完整 account-scoped tenant/list 原始 JSON envelope 与 `tenant_list_scope` 生成。scope 必须满足 `account_id==account search entity_id`、`account_scoped=true` 且不含 keyword；resolver 不按 tenant `company` 字段筛选，而是对完整列表按 `is_primary_tenant`、DAU 降序和稳定键排序。renderer 和 auditor 会重新校验 scope、确定性排序及顶层客户/租户/F 码一致性。
 
 `metrics` 必须包含 `scripts/render-snapshot.py` 的 `FIELD_SPECS` 中全部 41 个必需字段。值必须是 JSON 数字，不带单位、逗号或百分号。会议字段合同固定为九项：VC DAU、VC 渗透率、会议数、参会人次、平均参会时长、妙记 DAU/渗透率、智能纪要 DAU/渗透率。
 
@@ -33,6 +43,8 @@
 ```
 
 扩展字段必须带 `source=c360`。未注册字段先更新字段注册表，不得直接删除真实数据，也不得猜测值。
+
+`bitable_automation_run` 表示自动化运行额度；实际用量使用 `tenant_current_month_bitable_workflow_instance_cnt`。内容扩展应采集 `create_fcnt`。C360 画板内容模块优先 `create_fcnt`，多维表格模块优先实际自动化用量，额度不作为核心指标。
 
 采集前先运行 `python3 scripts/query-fields.py`，使用输出的 `all_fields` 与实体 meta 求交集后一次性查询。禁止只查询 41 个必需字段。
 
@@ -49,6 +61,25 @@
 
 原始数值保持 C360 精度，展示层统一按十进制 `ROUND_HALF_UP` 取整数（`.5` 远离 0）。百分比只允许 `0_to_100` 口径，不得无条件乘以 100。派生比值的分母必须大于 0；否则只说明无法计算，不生成结构或阶段判断。
 
+可选 Aeolus 正式输入使用 `aeolus_snapshot`：
+
+```json
+"aeolus_snapshot": {
+  "fcode": "FXXXXXXXXXXX",
+  "current_period": {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"},
+  "comparison_period": {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"},
+  "source_sha256": "64 位规范化来源哈希",
+  "metrics": {
+    "doc_create_fcnt": {"current": 1200, "comparison": 900},
+    "bitable_create_fcnt": {"current": 321, "comparison": 210},
+    "automation_run_cnt": {"current": 4567, "comparison": 3456},
+    "ticket_cnt": {"current": 88}
+  }
+}
+```
+
+`current_period` 与 `metrics` 必需；`comparison_period` 及每个指标的 `comparison` 可选。当前期须为连续 180 天；提供对比期时，两期各须连续 180 天且对比期紧邻当前期。Aeolus 使用独立语义键，不得复用 C360 当前月键。指标只允许 renderer 的 `AEOLUS_FIELD_SPECS`，其中还包括可选增强字段 `ticket_cnt`、`bot_finish_rate`、`im_dau`。提供当前期-only 数据也自动进入增强模式：画板和文档展示当前期，明确“未提供对比期”，且禁止出现“未接入 Aeolus”或生成导出邀请。
+
 ## 2. 确定性生成
 
 ```bash
@@ -64,7 +95,7 @@ python3 "$SKILL_ROOT/scripts/render-snapshot.py" \
 - `generated/document.xml`
 - `generated/manifest.json`
 - `generated/delivery-receipt.json`
-- `generated/aeolus-request.txt`
+- `generated/aeolus-request.txt`（仅 C360 快照模式生成；任意 Aeolus 增强模式均不生成）
 
 禁止手工修改生成文件。需要调整时修改输入 JSON 后重新生成。
 
@@ -134,6 +165,7 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 必须同时满足：
 
 - 41 个必需字段完整，全部已提供的注册扩展字段也完整进入正文；
+- 身份账本存在且 tenant_list_scope account_id、完整 account-scoped 候选排序、主租户及顶层身份字段全部一致；
 - 会议模块至少包含 VC DAU、VC 渗透率、会议数、参会人次、平均参会时长、妙记 DAU/渗透率、智能纪要 DAU/渗透率；
 - 所有展示值按 `ROUND_HALF_UP` 为整数，输入 JSON 保留原始精度；
 - 回执包含 C360 查询时间、F 码和规范化响应哈希；审计逐项校验规范化 source JSON、规范化输入、内容版本及生成物哈希；
@@ -147,11 +179,11 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 无归因、销售建议或提升空间表述；
 - 远端文档指标值与本地 XML 逐值一致，远端画板指标值与本地 SVG 逐值一致；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=3.1.0`；
+- `delivery-receipt.json.content_version=3.2.0`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
 
-通过后才返回文档链接和 `文档URL#whiteboard_block_id`，并原样附上 `generated/aeolus-request.txt` 的内容。
+通过后才返回文档链接和 `文档URL#whiteboard_block_id`。仅 C360 快照模式原样附上 `generated/aeolus-request.txt`；Aeolus 增强模式（包括当前期-only）不得生成或附加邀请。
 
 最终回复必须同时报告执行回执中的 `content_version`、`input_sha256` 前 12 位、`local_audit` 和 `remote_audit`。无法提供这些值表示确定性流水线没有执行，禁止声称“门禁已通过”。

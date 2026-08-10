@@ -82,8 +82,8 @@
 
 - 即时协同：`active_rate_7workday`、`activate_rate`、`active_duration_pavg_7workday`、`im_dau`、`im_dau_penetration_rate`；
 - 会议协同：`vc_dau`、`vc_dau_penetration_rate`、`vc_meeting_cnt`、`join_meeting_ucnt`、`vc_meeting_active_duration_pavg_val`、`minutes_dau`、`minutes_dau_penetration_rate`、`vc_ai_dau`、`vc_ai_minutes_dau_penetration_rate`；
-- 内容沉淀：`doc_independent_create_fcnt`、`doc_view_dau_penetration_rate`、`tenant_used_wiki_space_cnt`、`wiki_dau`、`wiki_dau_penetration_rate`；
-- 多维表格：`bitable_independent_create_fcnt`、`base_rownum_over15000_fcnt`、`bitable_automation_run`、`base_dashboard_cnt`、`base_dau_rate_avg_7workday`；
+- 内容沉淀：`doc_independent_create_fcnt`、`create_fcnt`、`doc_view_dau_penetration_rate`、`tenant_used_wiki_space_cnt`、`wiki_dau`、`wiki_dau_penetration_rate`；
+- 多维表格：`bitable_independent_create_fcnt`、`base_rownum_over15000_fcnt`、`bitable_automation_run`（额度）、`tenant_current_month_bitable_workflow_instance_cnt`（实际用量）、`base_dashboard_cnt`、`base_dau_rate_avg_7workday`；
 - 知识管理：`cansearch_pv_per_user`、`knowledge_ai_pavg_use_cnt`、`search_dau_penetration_rate`、`teampedia_dau_penetration_rate`、`self_build_teampedia_entity_cnt`；
 - AI 赋能：`ai_dau`、`aily_dau`、`aily_buddy_dau`、`base_ai_dau`、`miaoda_app_dau`、`miaoda_claw_dau`；
 - 服务台：`helpdesk_cnt`、`tenant_used_normal_helpdesks_all_cnt`、`helpdesk_dau`、`helpdesk_wau`、`ticket_cnt`、`bot_finish_rate`。

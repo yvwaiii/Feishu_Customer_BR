@@ -4,6 +4,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from identity_resolver import ResolutionError, validate_identity_ledger
+
 MODULES = {
     "即时协同": [
         "active_rate_7workday",
@@ -86,11 +89,14 @@ for module, fields in MODULES.items():
         "ready": len(found) >= minimum,
     }
 
-identity_ready = bool(
-    re.search(r"(客户实体|客户名称|customer_name)\s*[：:=]", text)
-    and re.search(r"(主租户|tenant_name)\s*[（(:：]", text)
-    and re.search(r"\bF[A-Za-z0-9]{6,}\b", text)
-)
+identity_error = None
+try:
+    parsed = json.loads(text)
+    validate_identity_ledger(parsed)
+    identity_ready = True
+except (json.JSONDecodeError, ResolutionError) as exc:
+    identity_ready = False
+    identity_error = str(exc)
 ready = identity_ready and all(item["ready"] for item in coverage.values())
 
 print(
@@ -98,6 +104,7 @@ print(
         {
             "ok": ready,
             "identity_ready": identity_ready,
+            "identity_error": identity_error,
             "coverage": coverage,
             "next_action": "generate" if ready else "supplement_or_query",
         },

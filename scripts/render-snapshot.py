@@ -3,13 +3,17 @@ import argparse
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+import sys
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from identity_resolver import validate_identity_ledger
 
-CONTENT_VERSION = "3.1.0"
+
+CONTENT_VERSION = "3.2.0"
 
 FIELD_SPECS = {
     "im_dau": ("IM DAU", "人", 0),
@@ -33,7 +37,7 @@ FIELD_SPECS = {
     "wiki_dau_penetration_rate": ("Wiki 渗透率", "%", 2),
     "bitable_independent_create_fcnt": ("多维表格独立创建数", "个", 0),
     "base_rownum_over15000_fcnt": ("超 1.5 万行大表", "张", 0),
-    "bitable_automation_run": ("自动化运行次数", "次", 0),
+    "bitable_automation_run": ("自动化运行额度", "次", 0),
     "base_dashboard_cnt": ("仪表盘数", "个", 0),
     "base_dau_rate_avg_7workday": ("多维表格渗透率", "%", 2),
     "cansearch_pv_per_user": ("人均可搜文档数", "篇", 2),
@@ -69,6 +73,7 @@ OPTIONAL_FIELD_SPECS = {
     "doc_edit_ucnt": ("文档编辑用户", "人", 0, "content"),
     "doc_creator_ucnt_penetration_rate": ("文档创建用户渗透率", "%", 2, "content"),
     "bitable_view_ucnt": ("多维表格 DAU", "人", 0, "base"),
+    "tenant_current_month_bitable_workflow_instance_cnt": ("当月自动化实际运行数", "次", 0, "base"),
     "base_ai_dau_avg_7workday": ("多维表格 AI DAU 近 7 工作日均值", "人", 2, "base"),
     "search_dau": ("搜索 DAU", "人", 0, "knowledge"),
     "knowledge_ai_dau_avg_7workday": ("知识问答 DAU 近 7 工作日均值", "人", 2, "knowledge"),
@@ -81,6 +86,37 @@ OPTIONAL_FIELD_SPECS = {
     "aily_buddy_sum_messages": ("智能伙伴消息数", "条", 0, "ai"),
     "artificial_ticket_cnt": ("人工工单数", "单", 0, "helpdesk"),
     "helpdesk_faq_cnt": ("服务台 FAQ", "条", 0, "helpdesk"),
+}
+
+AEOLUS_FIELD_SPECS = {
+    "doc_create_fcnt": ("近 180 天文档创建数", "个", "content"),
+    "bitable_create_fcnt": ("近 180 天多维表格创建数", "个", "base"),
+    "automation_run_cnt": ("近 180 天自动化运行数", "次", "base"),
+    "base_dashboard_cnt": ("近 180 天仪表盘数", "个", "base"),
+    "wiki_total_visit_cnt": ("近 180 天知识库总访问次数", "次", "knowledge"),
+    "vc_meeting_cnt": ("近 180 天会议数", "场", "meeting"),
+    "join_meeting_ucnt": ("近 180 天参会人次", "人次", "meeting"),
+    "vc_meeting_active_duration_pavg_val": ("近 180 天平均参会时长", "分钟", "meeting"),
+    "ticket_cnt": ("近 180 天工单数", "单", "helpdesk"),
+    "bot_finish_rate": ("近 180 天机器人闭环率", "%", "helpdesk"),
+    "im_dau": ("近 180 天 IM DAU", "人", "instant"),
+}
+
+AEOLUS_BOARD_PRIORITY = {
+    "instant": ["im_dau"],
+    "meeting": [
+        "vc_meeting_cnt",
+        "join_meeting_ucnt",
+        "vc_meeting_active_duration_pavg_val",
+    ],
+    "content": ["doc_create_fcnt"],
+    "base": [
+        "bitable_create_fcnt",
+        "automation_run_cnt",
+        "base_dashboard_cnt",
+    ],
+    "knowledge": ["wiki_total_visit_cnt"],
+    "helpdesk": ["ticket_cnt", "bot_finish_rate"],
 }
 
 MODULE_FIELDS = [
@@ -105,8 +141,8 @@ MODULE_FIELDS = [
 BOARD_PRIORITY = {
     "instant": ["tenant_primary_suite_version_suite_dau_avg_7workday", "im_dau", "im_dau_penetration_rate", "active_rate_7workday", "active_duration_pavg_7workday"],
     "meeting": ["vc_dau", "vc_meeting_cnt", "join_meeting_ucnt", "vc_meeting_active_duration_pavg_val", "vc_ai_minutes_dau_penetration_rate"],
-    "content": ["doc_independent_create_fcnt", "doc_view_dau_penetration_rate", "wiki_dau", "wiki_dau_penetration_rate", "tenant_used_wiki_space_cnt"],
-    "base": ["base_dau_rate_avg_7workday", "base_rownum_over15000_fcnt", "bitable_automation_run", "base_dashboard_cnt", "base_ai_dau"],
+    "content": ["create_fcnt", "doc_independent_create_fcnt", "doc_view_dau_penetration_rate", "wiki_dau", "wiki_dau_penetration_rate"],
+    "base": ["tenant_current_month_bitable_workflow_instance_cnt", "base_dau_rate_avg_7workday", "base_rownum_over15000_fcnt", "base_dashboard_cnt", "base_ai_dau"],
     "knowledge": ["search_dau", "search_dau_penetration_rate", "cansearch_pv_per_user", "teampedia_dau_penetration_rate", "self_build_teampedia_entity_cnt"],
     "ai": ["ai_dau", "ai_dau_avg_7workday", "knowledge_ai_dau_avg_7workday", "base_ai_dau", "miaoda_app_dau"],
     "helpdesk": ["helpdesk_cnt", "helpdesk_wau", "helpdesk_dau", "ticket_cnt", "bot_finish_rate"],
@@ -135,6 +171,16 @@ def n(data, key):
         value = extra.get("value")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(f"{key} 必须是有限 JSON 数字")
+    return value
+
+
+def aeolus_value(data, key, period="current"):
+    item = data["aeolus_snapshot"]["metrics"][key]
+    value = item.get(period)
+    if value is None and period == "comparison":
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"aeolus_snapshot.metrics.{key}.{period} 必须是有限 JSON 数字")
     return value
 
 
@@ -174,6 +220,14 @@ def fmt(data, key):
     value = n(data, key)
     number = display_number(value)
     return label, f"{number}{unit}" if unit == "%" else f"{number} {unit}"
+
+
+def fmt_aeolus(data, key, period="current"):
+    label, unit, _ = AEOLUS_FIELD_SPECS[key]
+    value = aeolus_value(data, key, period)
+    if value is None:
+        return label, "—"
+    return label, f"{display_number(value)} {unit}"
 
 
 def insights(data):
@@ -232,6 +286,7 @@ def text(x, y, value, size, fill, anchor="start", weight=400):
 
 
 def validate(data):
+    validate_identity_ledger(data)
     for key in FIELD_SPECS:
         n(data, key)
         if FIELD_SPECS[key][1] == "%" and not 0 <= n(data, key) <= 100:
@@ -265,10 +320,69 @@ def validate(data):
             raise ValueError(f"{key}.value 必须是有限 JSON 数字")
         if OPTIONAL_FIELD_SPECS[key][1] == "%" and not 0 <= value <= 100:
             raise ValueError(f"{key}.value 必须使用 0_to_100 百分比口径")
+    aeolus = data.get("aeolus_snapshot")
+    if aeolus is None:
+        return
+    if not isinstance(aeolus, dict):
+        raise ValueError("aeolus_snapshot 必须是对象")
+    if aeolus.get("fcode") != data["fcode"]:
+        raise ValueError("aeolus_snapshot.fcode 与主租户 F 码不一致")
+    source_sha = aeolus.get("source_sha256")
+    if not isinstance(source_sha, str) or len(source_sha) != 64 or any(
+        c not in "0123456789abcdefABCDEF" for c in source_sha
+    ):
+        raise ValueError("aeolus_snapshot.source_sha256 必须是 64 位 SHA256")
+
+    periods = {}
+    for period_name in ("current_period",):
+        period = aeolus.get(period_name)
+        if not isinstance(period, dict):
+            raise ValueError(f"aeolus_snapshot 缺少 {period_name}")
+        try:
+            start = date.fromisoformat(period["start_date"])
+            end = date.fromisoformat(period["end_date"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"{period_name} 日期必须为 YYYY-MM-DD") from exc
+        if end - start != timedelta(days=179):
+            raise ValueError(f"{period_name} 必须是连续 180 天")
+        periods[period_name] = (start, end)
+    comparison_period = aeolus.get("comparison_period")
+    if comparison_period is not None:
+        if not isinstance(comparison_period, dict):
+            raise ValueError("comparison_period 日期必须为 YYYY-MM-DD")
+        try:
+            comparison_start = date.fromisoformat(comparison_period["start_date"])
+            comparison_end = date.fromisoformat(comparison_period["end_date"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("comparison_period 日期必须为 YYYY-MM-DD") from exc
+        if comparison_end - comparison_start != timedelta(days=179):
+            raise ValueError("comparison_period 必须是连续 180 天")
+        if comparison_end + timedelta(days=1) != periods["current_period"][0]:
+            raise ValueError("Aeolus 对比期必须紧邻当前期之前")
+
+    metrics = aeolus.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        raise ValueError("aeolus_snapshot.metrics 不能为空")
+    unknown = set(metrics) - set(AEOLUS_FIELD_SPECS)
+    if unknown:
+        raise ValueError(f"Aeolus 指标不在 allowlist：{sorted(unknown)}")
+    for key, item in metrics.items():
+        if not isinstance(item, dict) or "current" not in item:
+            raise ValueError(f"aeolus_snapshot.metrics.{key} 缺少 current")
+        current_value = aeolus_value(data, key, "current")
+        if AEOLUS_FIELD_SPECS[key][1] == "%" and not 0 <= current_value <= 100:
+            raise ValueError(f"aeolus_snapshot.metrics.{key}.current 必须使用 0_to_100 百分比口径")
+        if "comparison" in item and item["comparison"] is not None:
+            if comparison_period is None:
+                raise ValueError(f"aeolus_snapshot.metrics.{key}.comparison 需要 comparison_period")
+            comparison_value = aeolus_value(data, key, "comparison")
+            if AEOLUS_FIELD_SPECS[key][1] == "%" and not 0 <= comparison_value <= 100:
+                raise ValueError(f"aeolus_snapshot.metrics.{key}.comparison 必须使用 0_to_100 百分比口径")
 
 
 def render(data, out_dir):
     validate(data)
+    enhanced = "aeolus_snapshot" in data
     ins = insights(data)
     modules = []
     for idx, (module_id, title, color, required_fields) in enumerate(MODULE_FIELDS):
@@ -276,26 +390,51 @@ def render(data, out_dir):
         for key, item in data.get("extra_metrics", {}).items():
             if OPTIONAL_FIELD_SPECS[key][3] == module_id:
                 doc_keys.append(key)
-        board_keys = []
+        board_metrics = []
+        if enhanced:
+            for key in AEOLUS_BOARD_PRIORITY.get(module_id, []):
+                if key in data["aeolus_snapshot"]["metrics"]:
+                    label, value = fmt_aeolus(data, key)
+                    board_metrics.append((f"aeolus:{key}", label, value))
         for key in BOARD_PRIORITY[module_id]:
+            if len(board_metrics) >= 5:
+                break
             try:
                 n(data, key)
-                board_keys.append(key)
+                if not any(item[0] == key for item in board_metrics):
+                    board_metrics.append((key, *fmt(data, key)))
             except KeyError:
                 pass
         for key in required_fields:
-            if len(board_keys) >= 5:
+            if len(board_metrics) >= 5:
                 break
-            if key not in board_keys:
-                board_keys.append(key)
+            if not any(item[0] == key for item in board_metrics):
+                board_metrics.append((key, *fmt(data, key)))
         modules.append({
             "id": module_id,
             "title": title,
             "color": color,
-            "board_metrics": [(key, *fmt(data, key)) for key in board_keys[:5]],
+            "board_metrics": board_metrics[:5],
             "doc_metrics": [(key, *fmt(data, key)) for key in doc_keys],
             "insight": ins[idx],
         })
+
+    mode_label = "C360 + Aeolus 近 180 天增强版" if enhanced else "C360 最新使用快照"
+    if enhanced:
+        current_period = data["aeolus_snapshot"]["current_period"]
+        comparison_period = data["aeolus_snapshot"].get("comparison_period")
+        if comparison_period:
+            period_note = (
+                f"Aeolus 当前期 {current_period['start_date']} 至 {current_period['end_date']}；"
+                f"对比期 {comparison_period['start_date']} 至 {comparison_period['end_date']}。"
+            )
+        else:
+            period_note = (
+                f"Aeolus 当前期 {current_period['start_date']} 至 {current_period['end_date']}；"
+                "未提供对比期。"
+            )
+    else:
+        period_note = "C360 最新使用快照，不包含近 180 天累计、日均、趋势和对比期。"
 
     svg = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1960">',
@@ -303,7 +442,7 @@ def render(data, out_dir):
         '<rect width="1600" height="1960" fill="url(#bg)"/>',
         '<rect x="58" y="56" width="5" height="98" rx="2.5" fill="#5CC8FF"/>',
         text(82, 101, f"{data['tenant_name']} × 飞书｜最新使用快照", 34, "#F7FAFF", weight=700),
-        text(82, 137, f"数据来源：C360 最新使用快照｜主租户 {data['fcode']}｜{data['suite']}", 15, "#9CAAC6"),
+        text(82, 137, f"数据来源：{mode_label}｜主租户 {data['fcode']}｜{data['suite']}", 15, "#9CAAC6"),
     ]
     centers = [205, 495, 785, 1075, 1365]
     for idx, module in enumerate(modules):
@@ -322,7 +461,7 @@ def render(data, out_dir):
     svg += [
         '<rect x="58" y="1860" width="1484" height="74" rx="20" fill="#10172A" stroke="#343A4B" stroke-width="2"/>',
         text(82, 1889, "数据口径", 16, "#C9D5EF", weight=700),
-        text(82, 1916, "C360 最新使用快照。本次未接入 Aeolus，因此不包含近 180 天累计、日均、趋势和对比期。", 14, "#8E9AB4"),
+        text(82, 1916, period_note, 14, "#8E9AB4"),
         "</svg>",
     ]
     svg_path = out_dir / "board.svg"
@@ -343,6 +482,44 @@ def render(data, out_dir):
             key = "tenant_used_normal_helpdesks_all_cnt"
             label, value = fmt(data, key)
             rows += f"<tr><td>{escape(label)}</td><td><b>{escape(value)}</b></td><td><code>{key}</code></td></tr>"
+        aeolus_rows = ""
+        if enhanced:
+            module_aeolus = [
+                key for key, spec in AEOLUS_FIELD_SPECS.items()
+                if spec[2] == module["id"] and key in data["aeolus_snapshot"]["metrics"]
+            ]
+            if module_aeolus:
+                has_comparison = bool(data["aeolus_snapshot"].get("comparison_period"))
+                if has_comparison:
+                    enhanced_rows = "".join(
+                        f"<tr><td>{escape(fmt_aeolus(data, key)[0])}</td>"
+                        f"<td><b>{escape(fmt_aeolus(data, key, 'current')[1])}</b></td>"
+                        f"<td><b>{escape(fmt_aeolus(data, key, 'comparison')[1])}</b></td>"
+                        f"<td><code>{escape(key)}</code></td></tr>"
+                        for key in module_aeolus
+                    )
+                    aeolus_rows = (
+                        "<h3>Aeolus 近 180 天增强指标</h3>"
+                        '<table><colgroup><col width="260"/><col width="150"/>'
+                        '<col width="150"/><col width="260"/></colgroup>'
+                        "<thead><tr><th>指标</th><th>当前期</th><th>对比期</th>"
+                        f"<th>来源字段</th></tr></thead><tbody>{enhanced_rows}</tbody></table>"
+                    )
+                else:
+                    enhanced_rows = "".join(
+                        f"<tr><td>{escape(fmt_aeolus(data, key)[0])}</td>"
+                        f"<td><b>{escape(fmt_aeolus(data, key, 'current')[1])}</b></td>"
+                        f"<td><code>{escape(key)}</code></td></tr>"
+                        for key in module_aeolus
+                    )
+                    aeolus_rows = (
+                        "<h3>Aeolus 近 180 天增强指标</h3>"
+                        "<p><b>对比说明：</b>未提供对比期。</p>"
+                        '<table><colgroup><col width="300"/><col width="170"/>'
+                        '<col width="300"/></colgroup>'
+                        "<thead><tr><th>指标</th><th>当前期</th>"
+                        f"<th>来源字段</th></tr></thead><tbody>{enhanced_rows}</tbody></table>"
+                    )
         sections.append(
             f'<h2>{escape(title)}</h2>'
             f'<table><colgroup><col width="290"/><col width="160"/><col width="260"/></colgroup>'
@@ -350,6 +527,7 @@ def render(data, out_dir):
             f'<th background-color="light-gray">C360 最新值</th>'
             f'<th background-color="light-gray">来源字段</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>'
+            f'{aeolus_rows}'
             f'<p><b>客观洞见：</b>{escape(insight)}</p>'
         )
 
@@ -357,14 +535,19 @@ def render(data, out_dir):
         f"即时协同：IM DAU {display_number(n(data, 'im_dau'))} 人，渗透率 {display_number(n(data, 'im_dau_penetration_rate'))}%。",
         f"会议协同：VC DAU {display_number(n(data, 'vc_dau'))} 人，{display_number(n(data, 'vc_meeting_cnt'))} 场会议对应 {display_number(n(data, 'join_meeting_ucnt'))} 人次。",
         f"内容沉淀：文档查看渗透率 {display_number(n(data, 'doc_view_dau_penetration_rate'))}%，Wiki 渗透率 {display_number(n(data, 'wiki_dau_penetration_rate'))}%。",
-        f"多维表格：渗透率 {display_number(n(data, 'base_dau_rate_avg_7workday'))}%，自动化运行 {display_number(n(data, 'bitable_automation_run'))} 次。",
+        (
+            f"多维表格：当月自动化实际运行数 {display_number(n(data, 'tenant_current_month_bitable_workflow_instance_cnt'))} 次，"
+            f"渗透率 {display_number(n(data, 'base_dau_rate_avg_7workday'))}%。"
+            if "tenant_current_month_bitable_workflow_instance_cnt" in data.get("extra_metrics", {})
+            else f"多维表格：渗透率 {display_number(n(data, 'base_dau_rate_avg_7workday'))}%。"
+        ),
         f"AI 赋能：AI DAU {display_number(n(data, 'ai_dau'))} 人，其中多维表格 AI DAU {display_number(n(data, 'base_ai_dau'))} 人。",
     ]
     core_xml = "".join(f"<li>{escape(item)}</li>" for item in core_observations)
 
     doc = f'''<title>{escape(data["tenant_name"])}｜飞书整体使用情况回顾｜{escape(data["review_month"])}</title>
 <callout emoji="📊" background-color="light-blue" border-color="blue">
-<p><b>数据口径：</b>C360 最新使用快照。本次未接入 Aeolus，因此不包含近 180 天累计、日均、趋势和对比期。</p>
+<p><b>数据口径：</b>{escape(mode_label)}。{escape(period_note)}</p>
 <p><b>客户实体：</b>{escape(data["customer_name"])}。</p>
 <p><b>回顾对象：</b>{escape(data["tenant_name"])}（{escape(data["fcode"])}），{escape(data["suite"])}。</p>
 </callout>
@@ -375,20 +558,27 @@ def render(data, out_dir):
 <h1>三、七模块数据回顾</h1>
 {"".join(sections)}
 <hr/><callout emoji="📌" background-color="light-gray" border-color="gray">
-<p><b>数据完整性说明：</b>正文包含 {len(FIELD_SPECS)} 个必需字段（会议九项完整）及本次 C360 返回并通过字段注册表校验的扩展字段。每项指标均列出来源字段；未提供的 Aeolus 指标不作为缺失，也不参与判断。</p>
+<p><b>数据完整性说明：</b>正文包含 {len(FIELD_SPECS)} 个必需字段（会议九项完整）及本次通过字段注册表校验的扩展字段。每项指标均列出来源字段。</p>
 <p>文档不包含无来源数据、行业对标、原因假设、风险判断或销售建议。</p>
 </callout>'''
     (out_dir / "document.xml").write_text(doc)
     field_sources = {key: "c360_required" for key in FIELD_SPECS}
     field_sources.update({key: item["source"] for key, item in data.get("extra_metrics", {}).items()})
     (out_dir / "manifest.json").write_text(json.dumps({
-        "mode": "c360_snapshot",
+        "mode": "c360_aeolus_180d" if enhanced else "c360_snapshot",
+        "account_id": data["identity_ledger"]["resolved_account"]["account_id"],
+        "tenant_id": data["identity_ledger"]["main_tenant"]["tenant_id"],
         "required_fields": list(FIELD_SPECS),
         "optional_fields_used": list(data.get("extra_metrics", {})),
         "field_sources": field_sources,
+        "aeolus_fields_used": list(data.get("aeolus_snapshot", {}).get("metrics", {})),
+        "aeolus_comparison_available": bool(data.get("aeolus_snapshot", {}).get("comparison_period")),
+        "aeolus_source_sha256": data.get("aeolus_snapshot", {}).get("source_sha256", "").lower() or None,
         "insights": ins
     }, ensure_ascii=False, indent=2))
-    aeolus_request = f"""当前 Aily 环境无法直接访问 Aeolus，我已先生成 C360 最新使用快照版。
+    handoff_path = None
+    if not enhanced:
+        aeolus_request = f"""当前 Aily 环境无法直接访问 Aeolus，我已先生成 C360 最新使用快照版。
 
 如果你希望升级为近 180 天增强版，请在可访问 ByteDance 内网的浏览器打开：
 https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=1247624
@@ -398,25 +588,27 @@ https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=124
 - 对比期：紧邻当前期之前的连续 180 天
 
 请将 CSV、XLSX、完整截图或两期指标表发给我。收到后我会校验 F 码与日期口径，并升级现有文档和画板。若暂不提供，当前 C360 快照版仍可正常使用。"""
-    handoff_path = out_dir / "aeolus-request.txt"
-    handoff_path.write_text(aeolus_request)
+        handoff_path = out_dir / "aeolus-request.txt"
+        handoff_path.write_text(aeolus_request)
     receipt = {
         "generator": "customer-business-review/render-snapshot.py",
         "content_version": CONTENT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "c360_snapshot",
+        "mode": "c360_aeolus_180d" if enhanced else "c360_snapshot",
         "field_count": len(set(data.get("metrics", {})) | set(data.get("extra_metrics", {}))),
         "required_field_count": len(FIELD_SPECS),
         "optional_field_count": len(set(data.get("extra_metrics", {})) - set(FIELD_SPECS)),
         "display_rounding": "ROUND_HALF_UP_integer",
         "raw_precision_preserved": True,
         "source_snapshot": data.get("source_snapshot"),
+        "identity_ledger_sha256": canonical_sha256(data["identity_ledger"]),
         "input_sha256": canonical_sha256(data),
         "source_sha256": data["source_snapshot"]["normalized_response_sha256"].lower(),
         "board_sha256": hashlib.sha256(svg_path.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256((out_dir / "document.xml").read_bytes()).hexdigest(),
-        "aeolus_request_sha256": hashlib.sha256(handoff_path.read_bytes()).hexdigest(),
-        "aeolus_handoff_required": True,
+        "aeolus_source_sha256": data.get("aeolus_snapshot", {}).get("source_sha256", "").lower() or None,
+        "aeolus_request_sha256": hashlib.sha256(handoff_path.read_bytes()).hexdigest() if handoff_path else None,
+        "aeolus_handoff_required": not enhanced,
         "local_audit": "pending",
         "remote_audit": "pending"
     }

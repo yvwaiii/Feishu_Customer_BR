@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ def load_script(name):
 
 RENDERER = load_script("render-snapshot.py")
 PACKAGER = load_script("package-release.py")
+IDENTITY_RESOLVER = load_script("identity_resolver.py")
 
 
 def canonical_sha256(value):
@@ -48,6 +50,29 @@ def sample_input(source):
             "self_build_teampedia_entity_cnt": 0,
         }
     )
+    identity_ledger = IDENTITY_RESOLVER.resolve({
+        "company_reference": {
+            "account_id": "account-test",
+            "customer_name": "虚构客户",
+        },
+        "accounts": [
+            {"account_id": "account-test", "customer_name": "虚构客户"},
+        ],
+        "tenant_list_scope": {
+            "account_id": "account-test",
+            "account_scoped": True,
+        },
+        "tenants": [
+            {
+                "account_id": "account-test",
+                "tenant_id": "tenant-test",
+                "display_id": "FTEST123456",
+                "display_name": "虚构租户",
+                "is_primary_tenant": True,
+                "x7wd_avg_dau_suite": 10,
+            },
+        ],
+    })
     return {
         "customer_name": "虚构客户",
         "tenant_name": "虚构租户",
@@ -58,12 +83,45 @@ def sample_input(source):
         "percent_scale": "0_to_100",
         "metrics": metrics,
         "extra_metrics": {},
+        "identity_ledger": identity_ledger,
         "source_snapshot": {
             "queried_at": "2026-08-07T00:00:00Z",
             "fcode": "FTEST123456",
             "normalized_response_sha256": canonical_sha256(source),
         },
     }
+
+
+def with_aeolus(data, source):
+    data["aeolus_snapshot"] = {
+        "fcode": data["fcode"],
+        "current_period": {
+            "start_date": "2026-02-09",
+            "end_date": "2026-08-07",
+        },
+        "comparison_period": {
+            "start_date": "2025-08-13",
+            "end_date": "2026-02-08",
+        },
+        "source_sha256": canonical_sha256(source),
+        "metrics": {
+            "doc_create_fcnt": {"current": 1200.5, "comparison": 900.4},
+            "bitable_create_fcnt": {"current": 321, "comparison": 210},
+            "automation_run_cnt": {
+                "current": 4567,
+                "comparison": 3456,
+            },
+            "base_dashboard_cnt": {"current": 98, "comparison": 76},
+            "wiki_total_visit_cnt": {"current": 76543, "comparison": 65432},
+            "vc_meeting_cnt": {"current": 2345, "comparison": 2000},
+            "join_meeting_ucnt": {"current": 9876, "comparison": 8765},
+            "vc_meeting_active_duration_pavg_val": {
+                "current": 42.5,
+                "comparison": 40.4,
+            },
+        },
+    }
+    return data
 
 
 class SnapshotPipelineTest(unittest.TestCase):
@@ -127,9 +185,13 @@ class SnapshotPipelineTest(unittest.TestCase):
             temp = Path(directory)
             data, input_path, source_path, output = self.generate(temp)
             receipt = json.loads((output / "delivery-receipt.json").read_text())
-            self.assertEqual(receipt["content_version"], "3.1.0")
+            self.assertEqual(receipt["content_version"], "3.2.0")
             self.assertEqual(receipt["display_rounding"], "ROUND_HALF_UP_integer")
             self.assertEqual(receipt["input_sha256"], canonical_sha256(data))
+            self.assertEqual(
+                receipt["identity_ledger_sha256"],
+                canonical_sha256(data["identity_ledger"]),
+            )
             self.run_command(
                 ROOT / "scripts/audit-snapshot.py",
                 "--input",
@@ -149,6 +211,156 @@ class SnapshotPipelineTest(unittest.TestCase):
             self.assertEqual(audited["local_audit"], "passed")
             self.assertEqual(audited["remote_audit"], "pending")
 
+    def test_renderer_rejects_tampered_identity_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            source = {"rows": []}
+            data = sample_input(source)
+            data["identity_ledger"]["main_tenant"]["display_id"] = "FWRONG123"
+            input_path = temp / "input.json"
+            input_path.write_text(json.dumps(data, ensure_ascii=False))
+            result = self.run_command(
+                ROOT / "scripts/render-snapshot.py",
+                "--input",
+                input_path,
+                "--out-dir",
+                temp / "generated",
+                expect_ok=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("main_tenant", result.stderr)
+
+    def test_enhanced_schema_values_enter_outputs_without_handoff_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            c360_source = {"rows": []}
+            aeolus_source = {"export": "formal-schema"}
+            data = with_aeolus(sample_input(c360_source), aeolus_source)
+            data["aeolus_snapshot"]["metrics"]["base_dashboard_cnt"].pop("comparison")
+            input_path = temp / "input.json"
+            c360_path = temp / "c360.json"
+            aeolus_path = temp / "aeolus.json"
+            output = temp / "generated"
+            input_path.write_text(json.dumps(data, ensure_ascii=False))
+            c360_path.write_text(json.dumps(c360_source, ensure_ascii=False))
+            aeolus_path.write_text(json.dumps(aeolus_source, ensure_ascii=False))
+            self.run_command(
+                ROOT / "scripts/render-snapshot.py",
+                "--input", input_path,
+                "--out-dir", output,
+            )
+            self.assertFalse((output / "aeolus-request.txt").exists())
+            svg = (output / "board.svg").read_text()
+            xml = (output / "document.xml").read_text()
+            self.assertIn("C360 + Aeolus 近 180 天增强版", svg)
+            self.assertIn("1,201 个", svg)
+            self.assertIn("当前期</th><th>对比期", xml)
+            self.assertIn("4,567 次", xml)
+            self.assertRegex(
+                xml,
+                r"<td><b>98 个</b></td><td><b>—</b></td><td><code>base_dashboard_cnt</code>",
+            )
+            self.assertNotIn("未接入 Aeolus", svg + xml)
+            self.assertNotIn("请将 CSV", svg + xml)
+            self.run_command(
+                ROOT / "scripts/audit-snapshot.py",
+                "--input", input_path,
+                "--source-json", c360_path,
+                "--aeolus-source-json", aeolus_path,
+                "--svg", output / "board.svg",
+                "--xml", output / "document.xml",
+                "--receipt", output / "delivery-receipt.json",
+            )
+
+    def test_enhanced_current_period_only_accepts_integer_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            c360_source = {"rows": []}
+            aeolus_source = {"export": "current-only-integers"}
+            data = with_aeolus(sample_input(c360_source), aeolus_source)
+            del data["aeolus_snapshot"]["comparison_period"]
+            for item in data["aeolus_snapshot"]["metrics"].values():
+                item["current"] = RENDERER.rounded_integer(item["current"])
+                item.pop("comparison", None)
+            data["aeolus_snapshot"]["metrics"].update({
+                "im_dau": {"current": 88},
+                "ticket_cnt": {"current": 77},
+                "bot_finish_rate": {"current": 66},
+            })
+            input_path = temp / "input.json"
+            c360_path = temp / "c360.json"
+            aeolus_path = temp / "aeolus.json"
+            output = temp / "generated"
+            input_path.write_text(json.dumps(data, ensure_ascii=False))
+            c360_path.write_text(json.dumps(c360_source, ensure_ascii=False))
+            aeolus_path.write_text(json.dumps(aeolus_source, ensure_ascii=False))
+            self.run_command(
+                ROOT / "scripts/render-snapshot.py",
+                "--input", input_path,
+                "--out-dir", output,
+            )
+            self.assertFalse((output / "aeolus-request.txt").exists())
+            svg = (output / "board.svg").read_text()
+            xml = (output / "document.xml").read_text()
+            self.assertIn("C360 + Aeolus 近 180 天增强版", svg)
+            self.assertIn("未提供对比期", svg + xml)
+            self.assertNotIn("<th>对比期</th>", xml)
+            self.assertIn("<code>automation_run_cnt</code>", xml)
+            self.assertIn("<code>ticket_cnt</code>", xml)
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertFalse(manifest["aeolus_comparison_available"])
+            displayed = re.findall(r'font-size="28"[^>]*>(.*?)</text>', svg)
+            displayed += re.findall(r"<td><b>(.*?)</b></td>", xml)
+            self.assertTrue(all(not re.search(r"\d+\.\d+", value) for value in displayed))
+            self.run_command(
+                ROOT / "scripts/audit-snapshot.py",
+                "--input", input_path,
+                "--source-json", c360_path,
+                "--aeolus-source-json", aeolus_path,
+                "--svg", output / "board.svg",
+                "--xml", output / "document.xml",
+                "--receipt", output / "delivery-receipt.json",
+            )
+
+    def test_enhanced_rejects_unknown_metric_and_bad_period(self):
+        data = with_aeolus(sample_input({"rows": []}), {"export": "x"})
+        data["aeolus_snapshot"]["metrics"]["unknown_metric"] = {"current": 1}
+        with self.assertRaisesRegex(ValueError, "allowlist"):
+            RENDERER.validate(data)
+        del data["aeolus_snapshot"]["metrics"]["unknown_metric"]
+        data["aeolus_snapshot"]["current_period"]["start_date"] = "2026-02-10"
+        with self.assertRaisesRegex(ValueError, "连续 180 天"):
+            RENDERER.validate(data)
+        data = with_aeolus(sample_input({"rows": []}), {"export": "x"})
+        del data["aeolus_snapshot"]["comparison_period"]
+        with self.assertRaisesRegex(ValueError, "需要 comparison_period"):
+            RENDERER.validate(data)
+
+    def test_field_semantics_and_call_budget_contract(self):
+        self.assertEqual(
+            RENDERER.FIELD_SPECS["bitable_automation_run"][0],
+            "自动化运行额度",
+        )
+        self.assertIn(
+            "tenant_current_month_bitable_workflow_instance_cnt",
+            RENDERER.OPTIONAL_FIELD_SPECS,
+        )
+        self.assertEqual(RENDERER.BOARD_PRIORITY["content"][0], "create_fcnt")
+        self.assertEqual(
+            RENDERER.BOARD_PRIORITY["base"][0],
+            "tenant_current_month_bitable_workflow_instance_cnt",
+        )
+        self.assertNotIn("bitable_automation_run", RENDERER.BOARD_PRIORITY["base"])
+        self.assertTrue(
+            {"ticket_cnt", "bot_finish_rate", "im_dau"}
+            <= set(RENDERER.AEOLUS_FIELD_SPECS)
+        )
+        routing = (ROOT / "references/tool-routing.md").read_text()
+        self.assertIn("客户搜索一次", routing)
+        self.assertIn("tenant/list` 一次", routing)
+        self.assertIn("tenant metrics get` 一次", routing)
+        self.assertNotIn("tenant list --keyword", (ROOT / "references/bootstrap-and-recovery.md").read_text())
+
     def test_remote_values_are_compared(self):
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
@@ -161,8 +373,6 @@ class SnapshotPipelineTest(unittest.TestCase):
             doc_json.write_text(
                 json.dumps({"data": {"document": {"document_id": "mock-document-id", "content": remote_content}}}, ensure_ascii=False)
             )
-            import re
-
             values = re.findall(r'<text\b[^>]*>(.*?)</text>', svg)
             nodes = [{"type": "group"} for _ in range(7)]
             nodes += [{"type": "connector"} for _ in range(20)]

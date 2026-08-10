@@ -1,7 +1,7 @@
 {
   "skill_name": "customer-business-review",
-  "content_version": "3.1.0",
-  "minimum_skillhub_version": "1.2.0",
+  "content_version": "3.2.0",
+  "minimum_skillhub_version": "1.3.0",
   "required_files": [
     "SKILL.md",
     "README.md",
@@ -13,7 +13,8 @@
     "scripts/query-fields.py",
     "scripts/validate-snapshot-input.py",
     "scripts/bootstrap-lark-c360.sh",
-    "scripts/cache-c360-artifact.sh"
+    "scripts/cache-c360-artifact.sh",
+    "scripts/identity_resolver.py"
   ],
   "package_files": [
     ".gitignore",
@@ -34,20 +35,50 @@
     "scripts/audit-snapshot.py",
     "scripts/bootstrap-lark-c360.sh",
     "scripts/cache-c360-artifact.sh",
+    "scripts/identity_resolver.py",
     "scripts/package-release.py",
     "scripts/preflight-release.py",
     "scripts/query-fields.py",
     "scripts/render-snapshot.py",
     "scripts/validate-snapshot-input.py",
+    "tests/test_identity_resolver.py",
     "tests/test_snapshot_pipeline.py"
   ],
   "delivery_contract": {
     "snapshot_renderer": "scripts/render-snapshot.py",
     "snapshot_auditor": "scripts/audit-snapshot.py",
+    "identity_resolver": "scripts/identity_resolver.py",
+    "identity_ledger_required": true,
+    "tenant_list_scope_required": true,
+    "tenant_keyword_allowed": false,
     "required_receipt": "delivery-receipt.json",
     "required_field_count": 41,
     "meeting_required_field_count": 9,
     "display_rounding": "ROUND_HALF_UP_integer",
+    "aeolus_schema": "aeolus_snapshot",
+    "aeolus_required_properties": [
+      "current_period",
+      "fcode",
+      "metrics",
+      "source_sha256"
+    ],
+    "aeolus_optional_properties": [
+      "comparison_period",
+      "metrics.*.comparison"
+    ],
+    "aeolus_metric_allowlist": [
+      "automation_run_cnt",
+      "base_dashboard_cnt",
+      "bitable_create_fcnt",
+      "bot_finish_rate",
+      "doc_create_fcnt",
+      "im_dau",
+      "join_meeting_ucnt",
+      "ticket_cnt",
+      "vc_meeting_active_duration_pavg_val",
+      "vc_meeting_cnt",
+      "wiki_total_visit_cnt"
+    ],
     "remote_board_image_nodes": 0,
     "remote_board_icon_groups_min": 7
   }

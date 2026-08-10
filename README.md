@@ -2,9 +2,9 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`3.1.0`
+> 当前版本：`3.2.0`
 >
-> SkillHub 版本不得低于 `1.2.0`。
+> SkillHub 版本不得低于 `1.3.0`。
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -25,7 +25,7 @@
 
 Skill 会完成：
 
-1. 识别客户及其主租户；
+1. 直接解析 lark-c360 account search 与完整 account-scoped tenant/list JSON envelope/cell，校验 tenant_list_scope.account_id 后确定性排序识别主租户；
 2. 从 C360 获取租户与最新使用指标；
 3. 在增强模式下，从指定 Aeolus 看板读取近 180 天累计或日均指标；
 4. 按七个模块整理数据并生成洞见；
@@ -50,12 +50,15 @@ Skill 会完成：
 
 - 安装在 TRAE、Codex 等环境时，只要模拟浏览器、内置浏览器或用户 Chrome 能访问 ByteDance 内网，就会自动操作 Aeolus 取数；
 - 在 C360 快照基础上补充近 180 天累计和日均指标；
-- 可补充紧邻前 180 天对比；
+- 可补充紧邻前 180 天对比；对比期及各指标对比值均为可选；
 - 输出中标注明确的起止日期和数据来源。
+- renderer 接受可选 `aeolus_snapshot` 正式 schema，其中 F 码、当前期、来源 SHA256 和指标为必需，`comparison_period` 与指标 `comparison` 值可选。提供当前期-only 数据仍会进入增强模式，展示当前值并明确“未提供对比期”，不会生成 Aeolus 邀请文件。
+- Aeolus 指标使用独立语义键，例如 `doc_create_fcnt`、`bitable_create_fcnt`、`automation_run_cnt`、`wiki_total_visit_cnt`；还可增强 `ticket_cnt`、`bot_finish_rate`、`im_dau`。不得用 C360 当前月字段键承载 Aeolus 周期数据。
+- C360 画板中，内容模块优先展示 `create_fcnt`，多维表格模块优先展示 `tenant_current_month_bitable_workflow_instance_cnt` 实际自动化用量；`bitable_automation_run` 额度不作为核心指标。
 
 Aeolus 依赖可访问 ByteDance 内网的浏览器会话。Aily SaaS 环境不能通过安装 Skill 获得内网访问能力；需要增强版时，请在 TRAE/Codex 等可访问内网的本地 Agent 运行，或向 Aily 提供 Aeolus 导出。
 
-Aily 会先生成 C360 快照版并返回链接，同时只提醒一次如何导出 Aeolus。用户后续粘贴 CSV、XLSX、完整截图或两期指标表后，再升级同一份文档和画板；未提供时不会阻塞或反复提醒。
+Aily 会先生成 C360 快照版并返回链接，同时只提醒一次如何导出 Aeolus。用户后续粘贴 CSV、XLSX、完整截图、当前期-only 或两期指标表后，再升级同一份文档和画板；未提供时不会阻塞或反复提醒。
 
 七个模块包括：
 
@@ -99,7 +102,7 @@ unzip customer-business-review-skill.zip -d .trae/skills/
 python3 .trae/skills/customer-business-review/scripts/preflight-release.py
 ```
 
-预检输出中的 `content_version` 必须为 `3.1.0`，`minimum_skillhub_version` 必须为 `1.2.0`；不一致时停止使用并重新安装。
+预检输出中的 `content_version` 必须为 `3.2.0`，`minimum_skillhub_version` 必须为 `1.3.0`；不一致时停止使用并重新安装。
 
 ### Aily 智能伙伴
 
@@ -172,6 +175,8 @@ python3 .trae/skills/customer-business-review/scripts/preflight-release.py
 
 如果用户已经在消息正文中贴出已校验的客户、主租户、F 码和七模块字段，Skill 会直接使用正文数据生成交付物。附件或 resource 不可读不会触发重复索取数据。
 
+输入还必须包含由 `scripts/identity_resolver.py` 生成的身份账本。resolver 接收 `account_search`、完整 account-scoped `tenant_list` 原始 envelope 和 `tenant_list_scope={"account_id":"<account>","account_scoped":true}`；scope account_id 必须等于 account search 唯一 `entity_id`，禁止 tenant keyword。resolver 不按 tenant `company` 字段筛选，而对完整列表按 `is_primary_tenant` 降序、`x7wd_avg_dau_suite` 降序、`display_id`、`tenant_id`、`display_name` 升序选择第一名。用户要求刷新 C360 时，只使用本轮查询结果，旧消息、resource 和缓存不得补值。正常快速路径最多一次客户搜索、一次 tenant/list、一次 metrics get；schema/meta 仅在命令报字段或参数错误后读取。
+
 ## 输入
 
 至少提供以下任一信息：
@@ -237,12 +242,14 @@ python3 .trae/skills/customer-business-review/scripts/preflight-release.py
 │   ├── audit-snapshot.py
 │   ├── bootstrap-lark-c360.sh
 │   ├── cache-c360-artifact.sh
+│   ├── identity_resolver.py
 │   ├── package-release.py
 │   ├── preflight-release.py
 │   ├── query-fields.py
 │   ├── render-snapshot.py
 │   └── validate-snapshot-input.py
 ├── tests/
+│   ├── test_identity_resolver.py
 │   └── test_snapshot_pipeline.py
 ├── release-manifest.json
 └── references/
@@ -265,6 +272,6 @@ python3 scripts/preflight-release.py
 python3 -m unittest discover -s tests -v
 ```
 
-SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.1.0`，对应 SkillHub 版本不得低于 `1.2.0`。
+SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.2.0`，对应 SkillHub 版本不得低于 `1.3.0`。
 
 每次正式交付还必须生成 `delivery-receipt.json`。最终回复需要报告内容版本、输入哈希前 12 位、本地审计和云端审计状态；没有回执时不得声称质量门禁已通过。

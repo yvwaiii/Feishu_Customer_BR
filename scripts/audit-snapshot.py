@@ -6,8 +6,12 @@ import json
 import re
 import sys
 from collections import Counter
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from identity_resolver import ResolutionError, validate_identity_ledger
 
 
 BANNED_WORDS = [
@@ -15,7 +19,7 @@ BANNED_WORDS = [
     "续约", "增购", "重度办公", "已替代", "原因是",
 ]
 
-CONTENT_VERSION = "3.1.0"
+CONTENT_VERSION = "3.2.0"
 
 MEETING_REQUIRED = [
     "vc_dau",
@@ -28,6 +32,20 @@ MEETING_REQUIRED = [
     "vc_ai_dau",
     "vc_ai_minutes_dau_penetration_rate",
 ]
+
+AEOLUS_ALLOWLIST = {
+    "doc_create_fcnt",
+    "bitable_create_fcnt",
+    "automation_run_cnt",
+    "base_dashboard_cnt",
+    "wiki_total_visit_cnt",
+    "vc_meeting_cnt",
+    "join_meeting_ucnt",
+    "vc_meeting_active_duration_pavg_val",
+    "ticket_cnt",
+    "bot_finish_rate",
+    "im_dau",
+}
 
 
 def fail(errors):
@@ -86,7 +104,8 @@ def main():
     p.add_argument("--remote-doc-json")
     p.add_argument("--remote-board-raw")
     p.add_argument("--receipt", required=True)
-    p.add_argument("--aeolus-request", required=True)
+    p.add_argument("--aeolus-request")
+    p.add_argument("--aeolus-source-json")
     p.add_argument("--source-json", "--source", dest="source_json", required=True)
     args = p.parse_args()
 
@@ -95,7 +114,13 @@ def main():
     xml = Path(args.xml).read_text()
     errors = []
     extra_metrics = data.get("extra_metrics", {})
+    aeolus = data.get("aeolus_snapshot")
+    enhanced = isinstance(aeolus, dict)
 
+    try:
+        validate_identity_ledger(data)
+    except ResolutionError as exc:
+        errors.append(str(exc))
     if data.get("percent_scale") != "0_to_100":
         errors.append("percent_scale 必须明确为 0_to_100")
     source_snapshot = data.get("source_snapshot", {})
@@ -116,6 +141,106 @@ def main():
     for key in MEETING_REQUIRED:
         if key not in data.get("metrics", {}) and key not in extra_metrics:
             errors.append(f"会议模块缺少 C360 核心字段：{key}")
+    if enhanced:
+        aeolus_metrics = aeolus.get("metrics", {})
+        if not isinstance(aeolus_metrics, dict) or not aeolus_metrics:
+            errors.append("aeolus_snapshot.metrics 不能为空")
+            aeolus_metrics = {}
+        unknown = set(aeolus_metrics) - AEOLUS_ALLOWLIST
+        if unknown:
+            errors.append(f"Aeolus 指标不在 allowlist：{sorted(unknown)}")
+        if aeolus.get("fcode") != data.get("fcode"):
+            errors.append("aeolus_snapshot.fcode 与主租户 F 码不一致")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", str(aeolus.get("source_sha256", ""))):
+            errors.append("aeolus_snapshot.source_sha256 不是有效 SHA256")
+        periods = {}
+        for period_name in ("current_period",):
+            try:
+                period = aeolus[period_name]
+                start = date.fromisoformat(period["start_date"])
+                end = date.fromisoformat(period["end_date"])
+                periods[period_name] = (start, end)
+                if end - start != timedelta(days=179):
+                    errors.append(f"{period_name} 不是连续 180 天")
+            except (KeyError, TypeError, ValueError):
+                errors.append(f"{period_name} 日期结构错误")
+        comparison_period = aeolus.get("comparison_period")
+        if comparison_period is not None:
+            try:
+                comparison_start = date.fromisoformat(comparison_period["start_date"])
+                comparison_end = date.fromisoformat(comparison_period["end_date"])
+                periods["comparison_period"] = (comparison_start, comparison_end)
+                if comparison_end - comparison_start != timedelta(days=179):
+                    errors.append("comparison_period 不是连续 180 天")
+                if (
+                    "current_period" in periods
+                    and comparison_end + timedelta(days=1) != periods["current_period"][0]
+                ):
+                    errors.append("Aeolus 对比期未紧邻当前期之前")
+            except (KeyError, TypeError, ValueError):
+                errors.append("comparison_period 日期结构错误")
+        if args.aeolus_source_json:
+            actual_aeolus_sha = canonical_sha256(
+                json.loads(Path(args.aeolus_source_json).read_text())
+            )
+            if str(aeolus.get("source_sha256", "")).lower() != actual_aeolus_sha:
+                errors.append("aeolus_snapshot.source_sha256 与 Aeolus source JSON 不匹配")
+        for key, item in aeolus_metrics.items():
+            if not isinstance(item, dict) or "current" not in item:
+                errors.append(f"Aeolus 指标结构错误：{key}")
+                continue
+            expected_values = []
+            value_periods = ("current", "comparison") if comparison_period else ("current",)
+            for period in value_periods:
+                value = item.get(period)
+                if value is None and period == "comparison":
+                    expected_values.append("—")
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    errors.append(f"Aeolus 指标值错误：{key}.{period}")
+                    continue
+                if key == "bot_finish_rate" and not 0 <= value <= 100:
+                    errors.append(
+                        f"Aeolus 百分比字段未归一到 0-100：{key}.{period}={value}"
+                    )
+                rendered = rounded_text(value)
+                expected_values.append(rendered)
+            if comparison_period is None and item.get("comparison") is not None:
+                errors.append(f"Aeolus 指标存在 comparison 但未提供 comparison_period：{key}")
+            candidate_rows = re.findall(
+                rf"<tr>(?:(?!</tr>).)*?<code>{re.escape(key)}</code>"
+                rf"(?:(?!</tr>).)*?</tr>",
+                xml,
+                flags=re.S,
+            )
+            value_pairs = [
+                re.findall(r"<td><b>(.*?)</b></td>", row, flags=re.S)
+                for row in candidate_rows
+            ]
+            value_pairs = [values for values in value_pairs if len(values) == len(value_periods)]
+            if not value_pairs:
+                errors.append(f"Aeolus 指标未进入文档：{key}")
+            elif len(expected_values) == len(value_periods):
+                normalized_pairs = [
+                    [
+                        re.sub(r"[^\d,—-]", "", normalize_visible(value))
+                        for value in values
+                    ]
+                    for values in value_pairs
+                ]
+                if not any(
+                    all(
+                        expected in actual
+                        for expected, actual in zip(expected_values, actual_values)
+                    )
+                    for actual_values in normalized_pairs
+                ):
+                    errors.append(f"Aeolus 当前/对比值未逐项进入文档：{key}")
+        if comparison_period is None and "未提供对比期" not in svg + xml:
+            errors.append("Aeolus 当前期-only 产物未明确“未提供对比期”")
+        for forbidden in ("未接入 Aeolus", "请将 CSV", "如果你希望升级"):
+            if forbidden in svg or forbidden in xml:
+                errors.append(f"增强模式产物包含未接入/邀请文案：{forbidden}")
 
     percent_values = {}
     for key, value in data.get("metrics", {}).items():
@@ -159,7 +284,7 @@ def main():
     number_tokens = set(re.findall(r"(?<![A-Za-z])\d[\d,.]*%?", visible_text))
     allowed_numbers = set()
     for value in metrics.values():
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             allowed_numbers.add(f"{value}")
             allowed_numbers.add(rounded_text(value))
             allowed_numbers.add(f"{value:.2f}")
@@ -174,7 +299,7 @@ def main():
                 collect_scalars(child)
         else:
             allowed_numbers.update(re.findall(r"\d[\d,.]*", str(value)))
-            if isinstance(value, (int, float)):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
                 allowed_numbers.add(rounded_text(value))
                 allowed_numbers.add(rounded_text(value).replace(",", ""))
     collect_scalars(data)
@@ -243,23 +368,32 @@ def main():
         expected = {
             "input_sha256": canonical_sha256(data),
             "content_version": CONTENT_VERSION,
+            "identity_ledger_sha256": canonical_sha256(data.get("identity_ledger")),
             "source_sha256": str(source_sha).lower(),
             "board_sha256": hashlib.sha256(Path(args.svg).read_bytes()).hexdigest(),
             "document_sha256": hashlib.sha256(Path(args.xml).read_bytes()).hexdigest(),
         }
+        if enhanced:
+            expected["aeolus_source_sha256"] = str(aeolus.get("source_sha256")).lower()
         for key, value in expected.items():
             if receipt.get(key) != value:
                 fail([f"执行回执哈希不匹配：{key}"])
-        if not args.aeolus_request:
-            fail(["缺少 --aeolus-request，无法校验主动邀请"])
-        request_path = Path(args.aeolus_request)
-        request_sha = hashlib.sha256(request_path.read_bytes()).hexdigest()
-        if receipt.get("aeolus_request_sha256") != request_sha:
-            fail(["Aeolus 邀请文件哈希不匹配"])
-        request_text = request_path.read_text()
-        for marker in ["无法直接访问 Aeolus", "主租户 F 码", "连续 180 天", "CSV", "XLSX"]:
-            if marker not in request_text:
-                fail([f"Aeolus 邀请缺少内容：{marker}"])
+        if enhanced:
+            if args.aeolus_request:
+                fail(["增强模式禁止提供 Aeolus 邀请文件"])
+            if receipt.get("aeolus_handoff_required") is not False:
+                fail(["增强模式回执不得要求 Aeolus 邀请"])
+        else:
+            if not args.aeolus_request:
+                fail(["缺少 --aeolus-request，无法校验主动邀请"])
+            request_path = Path(args.aeolus_request)
+            request_sha = hashlib.sha256(request_path.read_bytes()).hexdigest()
+            if receipt.get("aeolus_request_sha256") != request_sha:
+                fail(["Aeolus 邀请文件哈希不匹配"])
+            request_text = request_path.read_text()
+            for marker in ["无法直接访问 Aeolus", "主租户 F 码", "连续 180 天", "CSV", "XLSX"]:
+                if marker not in request_text:
+                    fail([f"Aeolus 邀请缺少内容：{marker}"])
         receipt["local_audit"] = "passed"
         receipt["remote_audit"] = "passed" if args.remote_doc_json and args.remote_board_raw else "pending"
         if args.remote_doc_json:
