@@ -92,10 +92,11 @@ if contract.get("tenant_list_scope_required") is not True:
 if contract.get("tenant_keyword_allowed") is not False:
     errors.append("delivery_contract.tenant_keyword_allowed 必须为 false")
 expected_aeolus_fields = {
-    "automation_run_cnt", "base_dashboard_cnt", "bitable_create_fcnt",
-    "bot_finish_rate", "doc_create_fcnt", "im_dau", "join_meeting_ucnt",
-    "ticket_cnt", "vc_meeting_active_duration_pavg_val", "vc_meeting_cnt",
-    "wiki_total_visit_cnt",
+    "meeting_duration_per_capita", "doc_create_fcnt_180d",
+    "bitable_create_total_180d", "bitable_automation_run_total_180d",
+    "bitable_dashboard_create_total_180d", "helpdesk_total_180d",
+    "ticket_cumulative_total_180d", "bot_interception_rate_avg_180d",
+    "wiki_space_total_180d", "wiki_visit_total_180d",
 }
 if contract.get("aeolus_schema") != "aeolus_snapshot":
     errors.append("delivery_contract.aeolus_schema 必须为 aeolus_snapshot")
@@ -119,7 +120,9 @@ field_result = subprocess.run(
 if field_result.returncode != 0:
     errors.append(f"字段合同读取失败：{field_result.stderr}")
 else:
-    fields = json.loads(field_result.stdout)["required_fields"]
+    field_contract = json.loads(field_result.stdout)
+    fields = field_contract["required_fields"]
+    formal_contract = field_contract["formal_br"]
     meeting_fields = {
         "vc_dau", "vc_dau_penetration_rate", "vc_meeting_cnt",
         "join_meeting_ucnt", "vc_meeting_active_duration_pavg_val",
@@ -130,6 +133,96 @@ else:
         errors.append(f"实际必需字段数为 {len(fields)}，应为 41")
     if not meeting_fields.issubset(fields):
         errors.append("实际字段合同未完整包含会议九项")
+    if len(formal_contract.get("aeolus_fields", [])) != 10:
+        errors.append("正式 BR Aeolus 字段合同必须为 10 项")
+    if len(formal_contract.get("c360_fields", [])) != 9:
+        errors.append("正式 BR C360 字段合同必须为 9 项")
+    if formal_contract.get("required_metric_count") != 19:
+        errors.append("正式 BR 字段合同总数必须为 19")
+    if formal_contract.get("near_match_substitution_allowed") is not False:
+        errors.append("正式 BR 必须禁止相近字段替代")
+
+for key, expected_value in {
+    "formal_metric_count": 19,
+    "formal_aeolus_metric_count": 10,
+    "formal_c360_metric_count": 9,
+    "c360_only_status": "draft_only",
+    "near_match_substitution_allowed": False,
+}.items():
+    if contract.get(key) != expected_value:
+        errors.append(f"delivery_contract.{key} 不匹配")
+    if len(formal_contract.get("aeolus_fields", [])) != 10:
+        errors.append("正式 BR Aeolus 字段合同必须为 10 项")
+    if len(formal_contract.get("c360_fields", [])) != 9:
+        errors.append("正式 BR C360 字段合同必须为 9 项")
+    if formal_contract.get("required_metric_count") != 19:
+        errors.append("正式 BR 字段合同总数必须为 19")
+    if formal_contract.get("near_match_substitution_allowed") is not False:
+        errors.append("正式 BR 必须禁止相近字段替代")
+
+for key, expected_value in {
+    "formal_metric_count": 19,
+    "formal_aeolus_metric_count": 10,
+    "formal_c360_metric_count": 9,
+    "c360_only_status": "draft_only",
+    "near_match_substitution_allowed": False,
+}.items():
+    if contract.get(key) != expected_value:
+        errors.append(f"delivery_contract.{key} 不匹配")
+    if len(formal_contract.get("aeolus_fields", [])) != 10:
+        errors.append("正式 BR Aeolus 字段合同必须为 10 项")
+    if len(formal_contract.get("c360_fields", [])) != 9:
+        errors.append("正式 BR C360 字段合同必须为 9 项")
+    if formal_contract.get("required_metric_count") != 19:
+        errors.append("正式 BR 字段合同总数必须为 19")
+    if formal_contract.get("near_match_substitution_allowed") is not False:
+        errors.append("正式 BR 必须禁止相近字段替代")
+
+for key, expected_value in {
+    "formal_metric_count": 19,
+    "formal_aeolus_metric_count": 10,
+    "formal_c360_metric_count": 9,
+    "c360_only_status": "draft_only",
+    "near_match_substitution_allowed": False,
+}.items():
+    if contract.get(key) != expected_value:
+        errors.append(f"delivery_contract.{key} 不匹配")
+    if len(formal_contract.get("aeolus_fields", [])) != 10:
+        errors.append("正式 BR Aeolus 字段合同必须为 10 项")
+    if len(formal_contract.get("c360_fields", [])) != 9:
+        errors.append("正式 BR C360 字段合同必须为 9 项")
+    if formal_contract.get("required_metric_count") != 19:
+        errors.append("正式 BR 字段合同总数必须为 19")
+    if formal_contract.get("near_match_substitution_allowed") is not False:
+        errors.append("正式 BR 必须禁止相近字段替代")
+
+for key, expected_value in {
+    "formal_metric_count": 19,
+    "formal_aeolus_metric_count": 10,
+    "formal_c360_metric_count": 9,
+    "c360_only_status": "draft_only",
+    "near_match_substitution_allowed": False,
+}.items():
+    if contract.get(key) != expected_value:
+        errors.append(f"delivery_contract.{key} 不匹配")
+    if len(formal_contract.get("aeolus_fields", [])) != 10:
+        errors.append("正式 BR Aeolus 字段合同必须为 10 项")
+    if len(formal_contract.get("c360_fields", [])) != 9:
+        errors.append("正式 BR C360 字段合同必须为 9 项")
+    if formal_contract.get("required_metric_count") != 19:
+        errors.append("正式 BR 字段合同总数必须为 19")
+    if formal_contract.get("near_match_substitution_allowed") is not False:
+        errors.append("正式 BR 必须禁止相近字段替代")
+
+for key, expected_value in {
+    "formal_metric_count": 19,
+    "formal_aeolus_metric_count": 10,
+    "formal_c360_metric_count": 9,
+    "c360_only_status": "draft_only",
+    "near_match_substitution_allowed": False,
+}.items():
+    if contract.get(key) != expected_value:
+        errors.append(f"delivery_contract.{key} 不匹配")
 
 for forbidden in [
     "npm install -g @customer360/lark-c360",

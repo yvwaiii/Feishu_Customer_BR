@@ -1,6 +1,6 @@
 ---
 name: "customer-business-review"
-version: "3.2.0"
+version: "3.3.0"
 description: "生成客户飞书整体使用情况回顾与数据洞察画板。用户提到回访、BR、Business Review、客户复盘、使用回顾或主租户近 180 天分析等相近意图时自动调用。"
 ---
 
@@ -64,12 +64,12 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 
 按照 [数据与洞见规则](references/data-and-insights.md) 执行，以下规则不可降级：
 
-- **C360 快照模式**：当 Aily、云端沙箱或其他运行环境无法通过浏览器访问 ByteDance 内网 Aeolus 时，使用 C360 七模块最新快照生成正式回顾。标题和口径必须明确写 `C360 最新使用快照`，不得声称覆盖近 180 天，不展示累计、日均、趋势或同比。
+- **C360 快照模式**：当 Aily、云端沙箱或其他运行环境无法通过浏览器访问 ByteDance 内网 Aeolus 时，使用 C360 七模块最新快照生成草稿回顾。标题和口径必须明确写 `C360 最新使用快照`，不得声称覆盖近 180 天，不展示累计、日均、趋势或同比。
 - **C360 + Aeolus 增强模式**：TRAE、Codex 或其他 Agent 具备可访问内网的模拟浏览器、内置浏览器或用户 Chrome 自动化时，自动操作 Aeolus；用户提供 CSV/XLSX、完整截图或已确认指标表时也可进入增强模式。
 - 不得因为 Aeolus 不可访问而反复重试、要求 Aily 接管本地浏览器，或在 C360 七模块已完整时停止整个任务。
 - Aily 按 [Aeolus 数据交接](references/aeolus-handoff.md) 只提醒一次并立即交付 C360 快照版；用户后续补充数据时再升级现有文档和画板。
 - 增强模式的当前周期以 Aeolus 最近可用数据日为结束日滚动 180 天；对比期可选，提供时必须是紧邻当前期之前的连续 180 天。
-- `render-snapshot.py` 只接受正式 `aeolus_snapshot` schema：主租户 F 码、当前期、规范化来源 SHA256 和 allowlist 指标为必需；`comparison_period` 及各指标的 `comparison` 值可选。Aeolus 使用独立语义键，如 `doc_create_fcnt`、`bitable_create_fcnt`、`automation_run_cnt`、`wiki_total_visit_cnt`，不得复用 C360 当前月字段键；可选增强字段包括 `ticket_cnt`、`bot_finish_rate`、`im_dau`。
+- `render-snapshot.py` 只接受正式 `aeolus_snapshot` schema：主租户 F 码、当前期、规范化来源 SHA256 和 allowlist 指标为必需；`comparison_period` 及各指标的 `comparison` 值可选。Aeolus 使用独立语义键，如 `doc_create_fcnt_180d`、`bitable_create_total_180d`、`bitable_automation_run_total_180d`、`wiki_visit_total_180d`，不得复用 C360 当前月字段键。
 - 提供 `aeolus_snapshot` 后画板优先使用近 180 天当前期指标；有对比时文档展示当前期/对比期，无对比时仍进入增强模式并明确“未提供对比期”。两种增强路径均禁止写“未接入 Aeolus”或生成导出邀请。
 - C360 的 `bitable_automation_run` 是自动化运行额度，实际用量字段是 `tenant_current_month_bitable_workflow_instance_cnt`；内容扩展包含 `create_fcnt`。C360 画板内容模块优先 `create_fcnt`，多维表格模块优先自动化实际用量，额度不得作为核心指标。
 - 后台分析全部可用指标，画板按模块只选 3～5 个关键指标。回顾正文必须展示所有有效核心指标和完整模块数据，不受该数量限制。
@@ -124,3 +124,12 @@ description: "生成客户飞书整体使用情况回顾与数据洞察画板。
 - 文档与画板引用同一组数据和口径。
 - 未写回 C360，未编造数据、对标或因果关系。
 - 已执行 `render-snapshot.py` 和 `audit-snapshot.py`；输入、内容版本和 source 哈希一致；云端文档及画板已逐值比对；云端 raw 画板 `image=0` 且图标分组不少于 7。
+
+
+## v3.3.0 正式 BR 十九项硬门禁
+
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 Aeolus 10 项：人均会议时长、文档创建数、创建多维表格总数、多维表格自动化运行数、多维表格仪表盘创建数、服务台数量、累计工单数、平均机器人拦截率、知识库总空间数、总访问次数。
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 C360 9 项：活跃率、人均使用时长、知识问答 DAU、知识问答人均可搜文档数、智能纪要渗透率、飞书 aily 智能伙伴 DAU、多维表格 AI DAU、多维表格 DAU 渗透率、单表超过 15,000 行的表格总数。
+- 19 项各自映射独立字段，禁止使用同名复用、派生估算或语义相近字段替代。
+- 19 项展示值统一使用 `ROUND_HALF_UP` 整数化，原始值保留在输入与来源账本。
+- Aeolus 任一项缺失时不得得到正式审计 `passed`；C360-only 只能生成明确标记的草稿。

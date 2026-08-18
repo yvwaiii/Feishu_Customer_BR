@@ -69,7 +69,7 @@ resolver 输出的 `identity_ledger` 是 renderer/auditor 强制输入，禁止�
 4. 启动查询并等待看板完成刷新。
 5. 读取所有可见模块和指标；需要翻页、展开或切换板块时完成相应交互。
 6. 对比期可选；提供时使用紧邻当前期之前的连续 180 天。如看板不支持一次显示两期，分别使用两组明确日期查询。
-7. Aeolus 输出使用独立语义键（如 `doc_create_fcnt`、`bitable_create_fcnt`、`automation_run_cnt`、`wiki_total_visit_cnt`），不得复用 C360 当前月字段键；可选增强 `ticket_cnt`、`bot_finish_rate`、`im_dau`。
+7. Aeolus 输出使用独立语义键（如 `doc_create_fcnt_180d`、`bitable_create_total_180d`、`bitable_automation_run_total_180d`、`wiki_visit_total_180d`），不得复用 C360 当前月字段键。
 8. 保存字段名、当前值、可选对比值、单位、模块、日期范围及查询条件。
 
 禁止：
@@ -120,3 +120,12 @@ resolver 输出的 `identity_ledger` 是 renderer/auditor 强制输入，禁止�
 - 运行环境允许时读取 Aeolus 当前期数据，并尽可能读取可选对比期数据；当前期-only 仍进入增强模式。
 
 快照模式只等待 C360；增强模式等待 C360 与 Aeolus。
+
+
+## v3.3.0 正式 BR 十九项硬门禁
+
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 Aeolus 10 项：人均会议时长、文档创建数、创建多维表格总数、多维表格自动化运行数、多维表格仪表盘创建数、服务台数量、累计工单数、平均机器人拦截率、知识库总空间数、总访问次数。
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 C360 9 项：活跃率、人均使用时长、知识问答 DAU、知识问答人均可搜文档数、智能纪要渗透率、飞书 aily 智能伙伴 DAU、多维表格 AI DAU、多维表格 DAU 渗透率、单表超过 15,000 行的表格总数。
+- 19 项各自映射独立字段，禁止使用同名复用、派生估算或语义相近字段替代。
+- 19 项展示值统一使用 `ROUND_HALF_UP` 整数化，原始值保留在输入与来源账本。
+- Aeolus 任一项缺失时不得得到正式审计 `passed`；C360-only 只能生成明确标记的草稿。

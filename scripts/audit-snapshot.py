@@ -19,7 +19,7 @@ BANNED_WORDS = [
     "续约", "增购", "重度办公", "已替代", "原因是",
 ]
 
-CONTENT_VERSION = "3.2.0"
+CONTENT_VERSION = "3.3.0"
 
 MEETING_REQUIRED = [
     "vc_dau",
@@ -34,17 +34,41 @@ MEETING_REQUIRED = [
 ]
 
 AEOLUS_ALLOWLIST = {
-    "doc_create_fcnt",
-    "bitable_create_fcnt",
-    "automation_run_cnt",
-    "base_dashboard_cnt",
-    "wiki_total_visit_cnt",
-    "vc_meeting_cnt",
-    "join_meeting_ucnt",
-    "vc_meeting_active_duration_pavg_val",
-    "ticket_cnt",
-    "bot_finish_rate",
-    "im_dau",
+    "meeting_duration_per_capita",
+    "doc_create_fcnt_180d",
+    "bitable_create_total_180d",
+    "bitable_automation_run_total_180d",
+    "bitable_dashboard_create_total_180d",
+    "helpdesk_total_180d",
+    "ticket_cumulative_total_180d",
+    "bot_interception_rate_avg_180d",
+    "wiki_space_total_180d",
+    "wiki_visit_total_180d",
+}
+
+FORMAL_AEOLUS_LABELS = {
+    "meeting_duration_per_capita": "人均会议时长",
+    "doc_create_fcnt_180d": "文档创建数",
+    "bitable_create_total_180d": "创建多维表格总数",
+    "bitable_automation_run_total_180d": "多维表格自动化运行数",
+    "bitable_dashboard_create_total_180d": "多维表格仪表盘创建数",
+    "helpdesk_total_180d": "服务台数量",
+    "ticket_cumulative_total_180d": "累计工单数",
+    "bot_interception_rate_avg_180d": "平均机器人拦截率",
+    "wiki_space_total_180d": "知识库总空间数",
+    "wiki_visit_total_180d": "总访问次数",
+}
+
+FORMAL_C360_LABELS = {
+    "active_rate_7workday": "活跃率",
+    "active_duration_pavg_7workday": "人均使用时长",
+    "knowledge_ai_dau": "知识问答 DAU",
+    "cansearch_pv_per_user": "知识问答人均可搜文档数",
+    "vc_ai_minutes_dau_penetration_rate": "智能纪要渗透率",
+    "aily_buddy_dau": "飞书 aily 智能伙伴 DAU",
+    "base_ai_dau": "多维表格 AI DAU",
+    "base_dau_rate_avg_7workday": "多维表格 DAU 渗透率",
+    "base_rownum_over15000_fcnt": "单表超过 15,000 行的表格总数",
 }
 
 
@@ -199,7 +223,7 @@ def main():
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
                     errors.append(f"Aeolus 指标值错误：{key}.{period}")
                     continue
-                if key == "bot_finish_rate" and not 0 <= value <= 100:
+                if key == "bot_interception_rate_avg_180d" and not 0 <= value <= 100:
                     errors.append(
                         f"Aeolus 百分比字段未归一到 0-100：{key}.{period}={value}"
                     )
@@ -241,6 +265,32 @@ def main():
         for forbidden in ("未接入 Aeolus", "请将 CSV", "如果你希望升级"):
             if forbidden in svg or forbidden in xml:
                 errors.append(f"增强模式产物包含未接入/邀请文案：{forbidden}")
+
+    aeolus_metrics = aeolus.get("metrics", {}) if enhanced else {}
+    c360_missing = [
+        key for key in FORMAL_C360_LABELS
+        if key not in data.get("metrics", {}) and key not in extra_metrics
+    ]
+    aeolus_missing = [key for key in FORMAL_AEOLUS_LABELS if key not in aeolus_metrics]
+    formal_ready = not c360_missing and not aeolus_missing
+    if formal_ready:
+        board_labels = re.findall(r"<text\b[^>]*>(.*?)</text>", svg, flags=re.S)
+        board_labels = [normalize_visible(value) for value in board_labels]
+        document_text = normalize_visible(xml)
+        for key, label in {**FORMAL_AEOLUS_LABELS, **FORMAL_C360_LABELS}.items():
+            if board_labels.count(label) != 1:
+                errors.append(f"正式 BR 画板必须且仅展示一次指标名：{label}（{key}）")
+            if label not in document_text:
+                errors.append(f"正式 BR 正文缺少指标名：{label}（{key}）")
+        if sum(label in board_labels for label in FORMAL_AEOLUS_LABELS.values()) != 10:
+            errors.append("正式 BR 画板未完整展示 Aeolus 10 项")
+        if sum(label in board_labels for label in FORMAL_C360_LABELS.values()) != 9:
+            errors.append("正式 BR 画板未完整展示 C360 9 项")
+        if "正式 BR" not in svg or "正式 BR 19 项指标" not in xml:
+            errors.append("正式 BR 状态或 19 项正文总表缺失")
+    else:
+        if "BR 草稿" not in svg or "草稿" not in xml:
+            errors.append("19 项合同不完整时产物必须明确标记为草稿")
 
     percent_values = {}
     for key, value in data.get("metrics", {}).items():
@@ -394,8 +444,17 @@ def main():
             for marker in ["无法直接访问 Aeolus", "主租户 F 码", "连续 180 天", "CSV", "XLSX"]:
                 if marker not in request_text:
                     fail([f"Aeolus 邀请缺少内容：{marker}"])
-        receipt["local_audit"] = "passed"
-        receipt["remote_audit"] = "passed" if args.remote_doc_json and args.remote_board_raw else "pending"
+        receipt["formal_status"] = "ready" if formal_ready else "draft_only"
+        receipt["formal_contract"] = {
+            "ready": formal_ready,
+            "c360_missing": c360_missing,
+            "aeolus_missing": aeolus_missing,
+        }
+        receipt["local_audit"] = "passed" if formal_ready else "draft_only"
+        receipt["remote_audit"] = (
+            "passed" if formal_ready and args.remote_doc_json and args.remote_board_raw
+            else ("pending" if formal_ready else "draft_only")
+        )
         if args.remote_doc_json:
             remote = json.loads(Path(args.remote_doc_json).read_text())
             document = remote["data"]["document"]
@@ -409,7 +468,11 @@ def main():
                 node.get("type") for node in json.loads(Path(args.remote_board_raw).read_text()).get("nodes", [])
             ))
         receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2))
-    print(json.dumps({"ok": True, "message": "快照产物审计通过"}, ensure_ascii=False))
+    print(json.dumps({
+        "ok": True,
+        "formal_status": "ready" if formal_ready else "draft_only",
+        "message": "正式 BR 审计通过" if formal_ready else "草稿校验通过；不得作为正式 BR 交付",
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":

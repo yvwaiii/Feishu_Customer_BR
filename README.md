@@ -2,9 +2,9 @@
 
 一个用于生成“飞书整体使用情况回顾”的 TRAE Skill。它会识别客户主租户，读取 C360 最新快照，并在环境允许时补充 Aeolus 近 180 天数据，形成结构化洞见、飞书文档和数据画板。
 
-> 当前版本：`3.2.0`
+> 当前版本：`3.3.0`
 >
-> SkillHub 版本不得低于 `1.3.0`。
+> SkillHub 版本不得低于 `1.4.0`。
 
 ![脱敏后的生成效果](assets/board-preview.png)
 
@@ -39,7 +39,7 @@ Skill 会完成：
 适用于 Aily 智能伙伴、云端沙箱或无法访问 ByteDance 内网 Aeolus 的环境。
 
 - 使用 C360 七模块最新使用指标；
-- 正常生成正式回顾文档和画板；
+- 正常生成草稿回顾文档和画板；
 - 口径明确标记为 `C360 最新使用快照`；
 - 不展示近 180 天累计、日均、趋势或同比。
 - 使用内置确定性渲染器生成画板和文档，Aily 不再自行编写 SVG、单位或洞见。
@@ -53,7 +53,7 @@ Skill 会完成：
 - 可补充紧邻前 180 天对比；对比期及各指标对比值均为可选；
 - 输出中标注明确的起止日期和数据来源。
 - renderer 接受可选 `aeolus_snapshot` 正式 schema，其中 F 码、当前期、来源 SHA256 和指标为必需，`comparison_period` 与指标 `comparison` 值可选。提供当前期-only 数据仍会进入增强模式，展示当前值并明确“未提供对比期”，不会生成 Aeolus 邀请文件。
-- Aeolus 指标使用独立语义键，例如 `doc_create_fcnt`、`bitable_create_fcnt`、`automation_run_cnt`、`wiki_total_visit_cnt`；还可增强 `ticket_cnt`、`bot_finish_rate`、`im_dau`。不得用 C360 当前月字段键承载 Aeolus 周期数据。
+- Aeolus 指标使用独立语义键，例如 `doc_create_fcnt_180d`、`bitable_create_total_180d`、`bitable_automation_run_total_180d`、`wiki_visit_total_180d`。不得用 C360 当前月字段键承载 Aeolus 周期数据。
 - C360 画板中，内容模块优先展示 `create_fcnt`，多维表格模块优先展示 `tenant_current_month_bitable_workflow_instance_cnt` 实际自动化用量；`bitable_automation_run` 额度不作为核心指标。
 
 Aeolus 依赖可访问 ByteDance 内网的浏览器会话。Aily SaaS 环境不能通过安装 Skill 获得内网访问能力；需要增强版时，请在 TRAE/Codex 等可访问内网的本地 Agent 运行，或向 Aily 提供 Aeolus 导出。
@@ -102,7 +102,7 @@ unzip customer-business-review-skill.zip -d .trae/skills/
 python3 .trae/skills/customer-business-review/scripts/preflight-release.py
 ```
 
-预检输出中的 `content_version` 必须为 `3.2.0`，`minimum_skillhub_version` 必须为 `1.3.0`；不一致时停止使用并重新安装。
+预检输出中的 `content_version` 必须为 `3.3.0`，`minimum_skillhub_version` 必须为 `1.4.0`；不一致时停止使用并重新安装。
 
 ### Aily 智能伙伴
 
@@ -272,6 +272,15 @@ python3 scripts/preflight-release.py
 python3 -m unittest discover -s tests -v
 ```
 
-SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.2.0`，对应 SkillHub 版本不得低于 `1.3.0`。
+SkillHub 版本号与内容版本号是两套编号。安装后必须读取 `release-manifest.json.content_version`；当前内容版应为 `3.3.0`，对应 SkillHub 版本不得低于 `1.4.0`。
 
 每次正式交付还必须生成 `delivery-receipt.json`。最终回复需要报告内容版本、输入哈希前 12 位、本地审计和云端审计状态；没有回执时不得声称质量门禁已通过。
+
+
+## v3.3.0 正式 BR 十九项硬门禁
+
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 Aeolus 10 项：人均会议时长、文档创建数、创建多维表格总数、多维表格自动化运行数、多维表格仪表盘创建数、服务台数量、累计工单数、平均机器人拦截率、知识库总空间数、总访问次数。
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 C360 9 项：活跃率、人均使用时长、知识问答 DAU、知识问答人均可搜文档数、智能纪要渗透率、飞书 aily 智能伙伴 DAU、多维表格 AI DAU、多维表格 DAU 渗透率、单表超过 15,000 行的表格总数。
+- 19 项各自映射独立字段，禁止使用同名复用、派生估算或语义相近字段替代。
+- 19 项展示值统一使用 `ROUND_HALF_UP` 整数化，原始值保留在输入与来源账本。
+- Aeolus 任一项缺失时不得得到正式审计 `passed`；C360-only 只能生成明确标记的草稿。

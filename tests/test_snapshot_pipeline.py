@@ -26,6 +26,31 @@ RENDERER = load_script("render-snapshot.py")
 PACKAGER = load_script("package-release.py")
 IDENTITY_RESOLVER = load_script("identity_resolver.py")
 
+EXPECTED_FORMAL_C360_LABELS = {
+    "active_rate_7workday": "活跃率",
+    "active_duration_pavg_7workday": "人均使用时长",
+    "knowledge_ai_dau": "知识问答 DAU",
+    "cansearch_pv_per_user": "知识问答人均可搜文档数",
+    "vc_ai_minutes_dau_penetration_rate": "智能纪要渗透率",
+    "aily_buddy_dau": "飞书 aily 智能伙伴 DAU",
+    "base_ai_dau": "多维表格 AI DAU",
+    "base_dau_rate_avg_7workday": "多维表格 DAU 渗透率",
+    "base_rownum_over15000_fcnt": "单表超过 15,000 行的表格总数",
+}
+
+EXPECTED_FORMAL_AEOLUS_LABELS = {
+    "meeting_duration_per_capita": "人均会议时长",
+    "doc_create_fcnt_180d": "文档创建数",
+    "bitable_create_total_180d": "创建多维表格总数",
+    "bitable_automation_run_total_180d": "多维表格自动化运行数",
+    "bitable_dashboard_create_total_180d": "多维表格仪表盘创建数",
+    "helpdesk_total_180d": "服务台数量",
+    "ticket_cumulative_total_180d": "累计工单数",
+    "bot_interception_rate_avg_180d": "平均机器人拦截率",
+    "wiki_space_total_180d": "知识库总空间数",
+    "wiki_visit_total_180d": "总访问次数",
+}
+
 
 def canonical_sha256(value):
     payload = json.dumps(
@@ -82,7 +107,9 @@ def sample_input(source):
         "industry": "测试行业",
         "percent_scale": "0_to_100",
         "metrics": metrics,
-        "extra_metrics": {},
+        "extra_metrics": {
+            "knowledge_ai_dau": {"source": "c360", "value": 12},
+        },
         "identity_ledger": identity_ledger,
         "source_snapshot": {
             "queried_at": "2026-08-07T00:00:00Z",
@@ -105,20 +132,16 @@ def with_aeolus(data, source):
         },
         "source_sha256": canonical_sha256(source),
         "metrics": {
-            "doc_create_fcnt": {"current": 1200.5, "comparison": 900.4},
-            "bitable_create_fcnt": {"current": 321, "comparison": 210},
-            "automation_run_cnt": {
-                "current": 4567,
-                "comparison": 3456,
-            },
-            "base_dashboard_cnt": {"current": 98, "comparison": 76},
-            "wiki_total_visit_cnt": {"current": 76543, "comparison": 65432},
-            "vc_meeting_cnt": {"current": 2345, "comparison": 2000},
-            "join_meeting_ucnt": {"current": 9876, "comparison": 8765},
-            "vc_meeting_active_duration_pavg_val": {
-                "current": 42.5,
-                "comparison": 40.4,
-            },
+            "meeting_duration_per_capita": {"current": 42.5, "comparison": 40.4},
+            "doc_create_fcnt_180d": {"current": 1200.5, "comparison": 900.4},
+            "bitable_create_total_180d": {"current": 321, "comparison": 210},
+            "bitable_automation_run_total_180d": {"current": 4567, "comparison": 3456},
+            "bitable_dashboard_create_total_180d": {"current": 98, "comparison": 76},
+            "helpdesk_total_180d": {"current": 8, "comparison": 6},
+            "ticket_cumulative_total_180d": {"current": 2345, "comparison": 2000},
+            "bot_interception_rate_avg_180d": {"current": 65.5, "comparison": 61.2},
+            "wiki_space_total_180d": {"current": 88, "comparison": 75},
+            "wiki_visit_total_180d": {"current": 76543, "comparison": 65432},
         },
     }
     return data
@@ -180,12 +203,60 @@ class SnapshotPipelineTest(unittest.TestCase):
         self.assertTrue(meeting.isdisjoint(RENDERER.OPTIONAL_FIELD_SPECS))
         self.assertEqual(len(RENDERER.FIELD_SPECS), 41)
 
+    def test_formal_metric_bindings_and_query_registry_are_exact(self):
+        actual_c360 = {
+            key: spec[0] for key, spec in RENDERER.FORMAL_C360_SPECS.items()
+        }
+        actual_aeolus = {
+            key: spec[0] for key, spec in RENDERER.AEOLUS_FIELD_SPECS.items()
+        }
+        self.assertEqual(actual_c360, EXPECTED_FORMAL_C360_LABELS)
+        self.assertEqual(actual_aeolus, EXPECTED_FORMAL_AEOLUS_LABELS)
+        self.assertNotIn(
+            "knowledge_ai_dau_avg_7workday",
+            RENDERER.FORMAL_C360_SPECS,
+        )
+
+        result = self.run_command(ROOT / "scripts/query-fields.py")
+        registry = json.loads(result.stdout)
+        self.assertIn("knowledge_ai_dau", registry["optional_fields"])
+        formal_fields = {
+            item["field"]: item["display_name"]
+            for item in registry["formal_br"]["c360_fields"]
+        }
+        self.assertEqual(formal_fields, EXPECTED_FORMAL_C360_LABELS)
+
+    def test_avg_knowledge_dau_without_exact_field_is_not_formal_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            data = with_aeolus(sample_input({"rows": []}), {"export": "avg-only"})
+            data["extra_metrics"].pop("knowledge_ai_dau")
+            data["extra_metrics"]["knowledge_ai_dau_avg_7workday"] = {
+                "source": "c360",
+                "value": 12.5,
+            }
+            status = RENDERER.formal_contract_status(data)
+            self.assertFalse(status["ready"])
+            self.assertEqual(status["c360_missing"], ["knowledge_ai_dau"])
+
+            input_path = temp / "input.json"
+            output = temp / "generated"
+            input_path.write_text(json.dumps(data, ensure_ascii=False))
+            self.run_command(
+                ROOT / "scripts/render-snapshot.py",
+                "--input", input_path,
+                "--out-dir", output,
+            )
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertFalse(manifest["formal_contract"]["ready"])
+            self.assertEqual(manifest["mode"], "draft")
+
     def test_render_and_local_hash_audit(self):
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
             data, input_path, source_path, output = self.generate(temp)
             receipt = json.loads((output / "delivery-receipt.json").read_text())
-            self.assertEqual(receipt["content_version"], "3.2.0")
+            self.assertEqual(receipt["content_version"], "3.3.0")
             self.assertEqual(receipt["display_rounding"], "ROUND_HALF_UP_integer")
             self.assertEqual(receipt["input_sha256"], canonical_sha256(data))
             self.assertEqual(
@@ -208,8 +279,8 @@ class SnapshotPipelineTest(unittest.TestCase):
                 output / "aeolus-request.txt",
             )
             audited = json.loads((output / "delivery-receipt.json").read_text())
-            self.assertEqual(audited["local_audit"], "passed")
-            self.assertEqual(audited["remote_audit"], "pending")
+            self.assertEqual(audited["local_audit"], "draft_only")
+            self.assertEqual(audited["remote_audit"], "draft_only")
 
     def test_renderer_rejects_tampered_identity_ledger(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -236,7 +307,7 @@ class SnapshotPipelineTest(unittest.TestCase):
             c360_source = {"rows": []}
             aeolus_source = {"export": "formal-schema"}
             data = with_aeolus(sample_input(c360_source), aeolus_source)
-            data["aeolus_snapshot"]["metrics"]["base_dashboard_cnt"].pop("comparison")
+            data["aeolus_snapshot"]["metrics"]["bitable_dashboard_create_total_180d"].pop("comparison")
             input_path = temp / "input.json"
             c360_path = temp / "c360.json"
             aeolus_path = temp / "aeolus.json"
@@ -252,13 +323,24 @@ class SnapshotPipelineTest(unittest.TestCase):
             self.assertFalse((output / "aeolus-request.txt").exists())
             svg = (output / "board.svg").read_text()
             xml = (output / "document.xml").read_text()
-            self.assertIn("C360 + Aeolus 近 180 天增强版", svg)
+            self.assertIn("C360 + Aeolus 近 180 天正式 BR", svg)
             self.assertIn("1,201 个", svg)
+            expected_labels = [
+                *EXPECTED_FORMAL_AEOLUS_LABELS.values(),
+                *EXPECTED_FORMAL_C360_LABELS.values(),
+            ]
+            board_labels = re.findall(r"<text\b[^>]*>(.*?)</text>", svg)
+            formal_table = xml.split("<h1>三、正式 BR 19 项指标</h1>", 1)[1].split("</table>", 1)[0]
+            document_labels = re.findall(r"<tr><td>(.*?)</td><td><b>", formal_table)
+            self.assertEqual(document_labels, expected_labels)
+            for label in expected_labels:
+                self.assertEqual(board_labels.count(label), 1)
+            self.assertIn("正式 BR 19 项指标", xml)
             self.assertIn("当前期</th><th>对比期", xml)
             self.assertIn("4,567 次", xml)
             self.assertRegex(
                 xml,
-                r"<td><b>98 个</b></td><td><b>—</b></td><td><code>base_dashboard_cnt</code>",
+                r"<td><b>98 个</b></td><td><b>—</b></td><td><code>bitable_dashboard_create_total_180d</code>",
             )
             self.assertNotIn("未接入 Aeolus", svg + xml)
             self.assertNotIn("请将 CSV", svg + xml)
@@ -283,9 +365,8 @@ class SnapshotPipelineTest(unittest.TestCase):
                 item["current"] = RENDERER.rounded_integer(item["current"])
                 item.pop("comparison", None)
             data["aeolus_snapshot"]["metrics"].update({
-                "im_dau": {"current": 88},
-                "ticket_cnt": {"current": 77},
-                "bot_finish_rate": {"current": 66},
+                                "ticket_cumulative_total_180d": {"current": 77},
+                "bot_interception_rate_avg_180d": {"current": 66},
             })
             input_path = temp / "input.json"
             c360_path = temp / "c360.json"
@@ -302,11 +383,11 @@ class SnapshotPipelineTest(unittest.TestCase):
             self.assertFalse((output / "aeolus-request.txt").exists())
             svg = (output / "board.svg").read_text()
             xml = (output / "document.xml").read_text()
-            self.assertIn("C360 + Aeolus 近 180 天增强版", svg)
+            self.assertIn("C360 + Aeolus 近 180 天正式 BR", svg)
             self.assertIn("未提供对比期", svg + xml)
             self.assertNotIn("<th>对比期</th>", xml)
-            self.assertIn("<code>automation_run_cnt</code>", xml)
-            self.assertIn("<code>ticket_cnt</code>", xml)
+            self.assertIn("<code>bitable_automation_run_total_180d</code>", xml)
+            self.assertIn("<code>ticket_cumulative_total_180d</code>", xml)
             manifest = json.loads((output / "manifest.json").read_text())
             self.assertFalse(manifest["aeolus_comparison_available"])
             displayed = re.findall(r'font-size="28"[^>]*>(.*?)</text>', svg)
@@ -352,7 +433,7 @@ class SnapshotPipelineTest(unittest.TestCase):
         )
         self.assertNotIn("bitable_automation_run", RENDERER.BOARD_PRIORITY["base"])
         self.assertTrue(
-            {"ticket_cnt", "bot_finish_rate", "im_dau"}
+            {"ticket_cumulative_total_180d", "bot_interception_rate_avg_180d", "meeting_duration_per_capita"}
             <= set(RENDERER.AEOLUS_FIELD_SPECS)
         )
         routing = (ROOT / "references/tool-routing.md").read_text()

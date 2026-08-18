@@ -70,9 +70,9 @@
   "comparison_period": {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"},
   "source_sha256": "64 位规范化来源哈希",
   "metrics": {
-    "doc_create_fcnt": {"current": 1200, "comparison": 900},
-    "bitable_create_fcnt": {"current": 321, "comparison": 210},
-    "automation_run_cnt": {"current": 4567, "comparison": 3456},
+    "doc_create_fcnt_180d": {"current": 1200, "comparison": 900},
+    "bitable_create_total_180d": {"current": 321, "comparison": 210},
+    "bitable_automation_run_total_180d": {"current": 4567, "comparison": 3456},
     "ticket_cnt": {"current": 88}
   }
 }
@@ -179,7 +179,7 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 - 无归因、销售建议或提升空间表述；
 - 远端文档指标值与本地 XML 逐值一致，远端画板指标值与本地 SVG 逐值一致；
 - 远端预览人工检查通过。
-- `delivery-receipt.json.content_version=3.2.0`；
+- `delivery-receipt.json.content_version=3.3.0`；
 - `delivery-receipt.json.local_audit=passed`；
 - `delivery-receipt.json.remote_audit=passed`；
 - `delivery-receipt.json.remote_node_types.image` 不存在或为 0。
@@ -187,3 +187,12 @@ python3 "$SKILL_ROOT/scripts/audit-snapshot.py" \
 通过后才返回文档链接和 `文档URL#whiteboard_block_id`。仅 C360 快照模式原样附上 `generated/aeolus-request.txt`；Aeolus 增强模式（包括当前期-only）不得生成或附加邀请。
 
 最终回复必须同时报告执行回执中的 `content_version`、`input_sha256` 前 12 位、`local_audit` 和 `remote_audit`。无法提供这些值表示确定性流水线没有执行，禁止声称“门禁已通过”。
+
+
+## v3.3.0 正式 BR 十九项硬门禁
+
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 Aeolus 10 项：人均会议时长、文档创建数、创建多维表格总数、多维表格自动化运行数、多维表格仪表盘创建数、服务台数量、累计工单数、平均机器人拦截率、知识库总空间数、总访问次数。
+- 正式 BR 必须同时获取并在同一画板与正文原名展示 C360 9 项：活跃率、人均使用时长、知识问答 DAU、知识问答人均可搜文档数、智能纪要渗透率、飞书 aily 智能伙伴 DAU、多维表格 AI DAU、多维表格 DAU 渗透率、单表超过 15,000 行的表格总数。
+- 19 项各自映射独立字段，禁止使用同名复用、派生估算或语义相近字段替代。
+- 19 项展示值统一使用 `ROUND_HALF_UP` 整数化，原始值保留在输入与来源账本。
+- Aeolus 任一项缺失时不得得到正式审计 `passed`；C360-only 只能生成明确标记的草稿。

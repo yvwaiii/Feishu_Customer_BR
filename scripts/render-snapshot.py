@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from identity_resolver import validate_identity_ledger
 
 
-CONTENT_VERSION = "3.2.0"
+CONTENT_VERSION = "3.3.0"
 
 FIELD_SPECS = {
     "im_dau": ("IM DAU", "人", 0),
@@ -76,6 +76,7 @@ OPTIONAL_FIELD_SPECS = {
     "tenant_current_month_bitable_workflow_instance_cnt": ("当月自动化实际运行数", "次", 0, "base"),
     "base_ai_dau_avg_7workday": ("多维表格 AI DAU 近 7 工作日均值", "人", 2, "base"),
     "search_dau": ("搜索 DAU", "人", 0, "knowledge"),
+    "knowledge_ai_dau": ("知识问答 DAU", "人", 0, "knowledge"),
     "knowledge_ai_dau_avg_7workday": ("知识问答 DAU 近 7 工作日均值", "人", 2, "knowledge"),
     "knowledge_ai_use_cnt": ("知识问答使用次数", "次", 0, "knowledge"),
     "teampedia_dau": ("词典 DAU", "人", 0, "knowledge"),
@@ -89,34 +90,70 @@ OPTIONAL_FIELD_SPECS = {
 }
 
 AEOLUS_FIELD_SPECS = {
-    "doc_create_fcnt": ("近 180 天文档创建数", "个", "content"),
-    "bitable_create_fcnt": ("近 180 天多维表格创建数", "个", "base"),
-    "automation_run_cnt": ("近 180 天自动化运行数", "次", "base"),
-    "base_dashboard_cnt": ("近 180 天仪表盘数", "个", "base"),
-    "wiki_total_visit_cnt": ("近 180 天知识库总访问次数", "次", "knowledge"),
-    "vc_meeting_cnt": ("近 180 天会议数", "场", "meeting"),
-    "join_meeting_ucnt": ("近 180 天参会人次", "人次", "meeting"),
-    "vc_meeting_active_duration_pavg_val": ("近 180 天平均参会时长", "分钟", "meeting"),
-    "ticket_cnt": ("近 180 天工单数", "单", "helpdesk"),
-    "bot_finish_rate": ("近 180 天机器人闭环率", "%", "helpdesk"),
-    "im_dau": ("近 180 天 IM DAU", "人", "instant"),
+    "meeting_duration_per_capita": ("人均会议时长", "分钟", "meeting"),
+    "doc_create_fcnt_180d": ("文档创建数", "个", "content"),
+    "bitable_create_total_180d": ("创建多维表格总数", "个", "base"),
+    "bitable_automation_run_total_180d": ("多维表格自动化运行数", "次", "base"),
+    "bitable_dashboard_create_total_180d": ("多维表格仪表盘创建数", "个", "base"),
+    "helpdesk_total_180d": ("服务台数量", "个", "helpdesk"),
+    "ticket_cumulative_total_180d": ("累计工单数", "单", "helpdesk"),
+    "bot_interception_rate_avg_180d": ("平均机器人拦截率", "%", "helpdesk"),
+    "wiki_space_total_180d": ("知识库总空间数", "个", "knowledge"),
+    "wiki_visit_total_180d": ("总访问次数", "次", "knowledge"),
 }
 
 AEOLUS_BOARD_PRIORITY = {
-    "instant": ["im_dau"],
-    "meeting": [
-        "vc_meeting_cnt",
-        "join_meeting_ucnt",
-        "vc_meeting_active_duration_pavg_val",
-    ],
-    "content": ["doc_create_fcnt"],
+    "meeting": ["meeting_duration_per_capita"],
+    "content": ["doc_create_fcnt_180d"],
     "base": [
-        "bitable_create_fcnt",
-        "automation_run_cnt",
-        "base_dashboard_cnt",
+        "bitable_create_total_180d",
+        "bitable_automation_run_total_180d",
+        "bitable_dashboard_create_total_180d",
     ],
-    "knowledge": ["wiki_total_visit_cnt"],
-    "helpdesk": ["ticket_cnt", "bot_finish_rate"],
+    "knowledge": ["wiki_space_total_180d", "wiki_visit_total_180d"],
+    "helpdesk": [
+        "helpdesk_total_180d",
+        "ticket_cumulative_total_180d",
+        "bot_interception_rate_avg_180d",
+    ],
+}
+
+# 正式 BR 的 19 项指标合同。每个展示名只绑定一个独立源字段，禁止相近替代。
+FORMAL_C360_SPECS = {
+    "active_rate_7workday": ("活跃率", "%", "instant"),
+    "active_duration_pavg_7workday": ("人均使用时长", "分钟", "instant"),
+    "knowledge_ai_dau": ("知识问答 DAU", "人", "knowledge"),
+    "cansearch_pv_per_user": ("知识问答人均可搜文档数", "篇", "knowledge"),
+    "vc_ai_minutes_dau_penetration_rate": ("智能纪要渗透率", "%", "meeting"),
+    "aily_buddy_dau": ("飞书 aily 智能伙伴 DAU", "人", "ai"),
+    "base_ai_dau": ("多维表格 AI DAU", "人", "ai"),
+    "base_dau_rate_avg_7workday": ("多维表格 DAU 渗透率", "%", "base"),
+    "base_rownum_over15000_fcnt": ("单表超过 15,000 行的表格总数", "张", "base"),
+}
+
+FORMAL_BOARD_PRIORITY = {
+    "instant": [("c360", "active_rate_7workday"), ("c360", "active_duration_pavg_7workday")],
+    "meeting": [("aeolus", "meeting_duration_per_capita"), ("c360", "vc_ai_minutes_dau_penetration_rate")],
+    "content": [("aeolus", "doc_create_fcnt_180d")],
+    "base": [
+        ("aeolus", "bitable_create_total_180d"),
+        ("aeolus", "bitable_automation_run_total_180d"),
+        ("aeolus", "bitable_dashboard_create_total_180d"),
+        ("c360", "base_dau_rate_avg_7workday"),
+        ("c360", "base_rownum_over15000_fcnt"),
+    ],
+    "knowledge": [
+        ("aeolus", "wiki_space_total_180d"),
+        ("aeolus", "wiki_visit_total_180d"),
+        ("c360", "knowledge_ai_dau"),
+        ("c360", "cansearch_pv_per_user"),
+    ],
+    "ai": [("c360", "aily_buddy_dau"), ("c360", "base_ai_dau")],
+    "helpdesk": [
+        ("aeolus", "helpdesk_total_180d"),
+        ("aeolus", "ticket_cumulative_total_180d"),
+        ("aeolus", "bot_interception_rate_avg_180d"),
+    ],
 }
 
 MODULE_FIELDS = [
@@ -143,8 +180,8 @@ BOARD_PRIORITY = {
     "meeting": ["vc_dau", "vc_meeting_cnt", "join_meeting_ucnt", "vc_meeting_active_duration_pavg_val", "vc_ai_minutes_dau_penetration_rate"],
     "content": ["create_fcnt", "doc_independent_create_fcnt", "doc_view_dau_penetration_rate", "wiki_dau", "wiki_dau_penetration_rate"],
     "base": ["tenant_current_month_bitable_workflow_instance_cnt", "base_dau_rate_avg_7workday", "base_rownum_over15000_fcnt", "base_dashboard_cnt", "base_ai_dau"],
-    "knowledge": ["search_dau", "search_dau_penetration_rate", "cansearch_pv_per_user", "teampedia_dau_penetration_rate", "self_build_teampedia_entity_cnt"],
-    "ai": ["ai_dau", "ai_dau_avg_7workday", "knowledge_ai_dau_avg_7workday", "base_ai_dau", "miaoda_app_dau"],
+    "knowledge": ["knowledge_ai_dau", "search_dau", "search_dau_penetration_rate", "cansearch_pv_per_user", "teampedia_dau_penetration_rate"],
+    "ai": ["ai_dau", "ai_dau_avg_7workday", "base_ai_dau", "miaoda_app_dau"],
     "helpdesk": ["helpdesk_cnt", "helpdesk_wau", "helpdesk_dau", "ticket_cnt", "bot_finish_rate"],
 }
 
@@ -228,6 +265,29 @@ def fmt_aeolus(data, key, period="current"):
     if value is None:
         return label, "—"
     return label, f"{display_number(value)} {unit}"
+
+
+def fmt_formal_c360(data, key):
+    label, unit, _ = FORMAL_C360_SPECS[key]
+    value = n(data, key)
+    number = display_number(value)
+    return label, f"{number}{unit}" if unit == "%" else f"{number} {unit}"
+
+
+def formal_contract_status(data):
+    c360_missing = []
+    for key in FORMAL_C360_SPECS:
+        try:
+            n(data, key)
+        except (KeyError, TypeError, ValueError):
+            c360_missing.append(key)
+    aeolus_metrics = data.get("aeolus_snapshot", {}).get("metrics", {})
+    aeolus_missing = [key for key in AEOLUS_FIELD_SPECS if key not in aeolus_metrics]
+    return {
+        "ready": not c360_missing and not aeolus_missing,
+        "c360_missing": c360_missing,
+        "aeolus_missing": aeolus_missing,
+    }
 
 
 def insights(data):
@@ -383,6 +443,8 @@ def validate(data):
 def render(data, out_dir):
     validate(data)
     enhanced = "aeolus_snapshot" in data
+    formal_contract = formal_contract_status(data)
+    formal = formal_contract["ready"]
     ins = insights(data)
     modules = []
     for idx, (module_id, title, color, required_fields) in enumerate(MODULE_FIELDS):
@@ -391,12 +453,18 @@ def render(data, out_dir):
             if OPTIONAL_FIELD_SPECS[key][3] == module_id:
                 doc_keys.append(key)
         board_metrics = []
-        if enhanced:
+        if formal:
+            for source, key in FORMAL_BOARD_PRIORITY[module_id]:
+                if source == "aeolus":
+                    board_metrics.append((f"aeolus:{key}", *fmt_aeolus(data, key)))
+                else:
+                    board_metrics.append((f"c360:{key}", *fmt_formal_c360(data, key)))
+        elif enhanced:
             for key in AEOLUS_BOARD_PRIORITY.get(module_id, []):
                 if key in data["aeolus_snapshot"]["metrics"]:
                     label, value = fmt_aeolus(data, key)
                     board_metrics.append((f"aeolus:{key}", label, value))
-        for key in BOARD_PRIORITY[module_id]:
+        for key in BOARD_PRIORITY[module_id] if not formal else []:
             if len(board_metrics) >= 5:
                 break
             try:
@@ -405,7 +473,7 @@ def render(data, out_dir):
                     board_metrics.append((key, *fmt(data, key)))
             except KeyError:
                 pass
-        for key in required_fields:
+        for key in required_fields if not formal else []:
             if len(board_metrics) >= 5:
                 break
             if not any(item[0] == key for item in board_metrics):
@@ -419,7 +487,12 @@ def render(data, out_dir):
             "insight": ins[idx],
         })
 
-    mode_label = "C360 + Aeolus 近 180 天增强版" if enhanced else "C360 最新使用快照"
+    if formal:
+        mode_label = "C360 + Aeolus 近 180 天正式 BR"
+    elif enhanced:
+        mode_label = "C360 + Aeolus 数据不完整草稿"
+    else:
+        mode_label = "C360-only 草稿"
     if enhanced:
         current_period = data["aeolus_snapshot"]["current_period"]
         comparison_period = data["aeolus_snapshot"].get("comparison_period")
@@ -441,7 +514,7 @@ def render(data, out_dir):
         '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#172554"/><stop offset="1" stop-color="#06080F"/></linearGradient></defs>',
         '<rect width="1600" height="1960" fill="url(#bg)"/>',
         '<rect x="58" y="56" width="5" height="98" rx="2.5" fill="#5CC8FF"/>',
-        text(82, 101, f"{data['tenant_name']} × 飞书｜最新使用快照", 34, "#F7FAFF", weight=700),
+        text(82, 101, f"{data['tenant_name']} × 飞书｜{'正式 BR' if formal else 'BR 草稿'}", 34, "#F7FAFF", weight=700),
         text(82, 137, f"数据来源：{mode_label}｜主租户 {data['fcode']}｜{data['suite']}", 15, "#9CAAC6"),
     ]
     centers = [205, 495, 785, 1075, 1365]
@@ -544,10 +617,33 @@ def render(data, out_dir):
         f"AI 赋能：AI DAU {display_number(n(data, 'ai_dau'))} 人，其中多维表格 AI DAU {display_number(n(data, 'base_ai_dau'))} 人。",
     ]
     core_xml = "".join(f"<li>{escape(item)}</li>" for item in core_observations)
+    formal_contract_xml = ""
+    if formal:
+        formal_rows = []
+        for key, (label, _, _) in AEOLUS_FIELD_SPECS.items():
+            _, value = fmt_aeolus(data, key)
+            formal_rows.append(
+                f"<tr><td>{escape(label)}</td><td><b>{escape(value)}</b></td>"
+                f"<td>Aeolus</td><td><code>{escape(key)}</code></td></tr>"
+            )
+        for key, (label, _, _) in FORMAL_C360_SPECS.items():
+            _, value = fmt_formal_c360(data, key)
+            formal_rows.append(
+                f"<tr><td>{escape(label)}</td><td><b>{escape(value)}</b></td>"
+                f"<td>C360</td><td><code>{escape(key)}</code></td></tr>"
+            )
+        formal_contract_xml = (
+            "<h1>三、正式 BR 19 项指标</h1>"
+            "<table><colgroup><col width=\"310\"/><col width=\"160\"/>"
+            "<col width=\"100\"/><col width=\"300\"/></colgroup>"
+            "<thead><tr><th>指标</th><th>展示值</th><th>数据源</th><th>独立来源字段</th></tr></thead>"
+            f"<tbody>{''.join(formal_rows)}</tbody></table>"
+        )
 
     doc = f'''<title>{escape(data["tenant_name"])}｜飞书整体使用情况回顾｜{escape(data["review_month"])}</title>
 <callout emoji="📊" background-color="light-blue" border-color="blue">
 <p><b>数据口径：</b>{escape(mode_label)}。{escape(period_note)}</p>
+<p><b>交付状态：</b>{"正式 BR" if formal else "草稿；Aeolus 十项未完整前不得作为正式 BR 交付"}。</p>
 <p><b>客户实体：</b>{escape(data["customer_name"])}。</p>
 <p><b>回顾对象：</b>{escape(data["tenant_name"])}（{escape(data["fcode"])}），{escape(data["suite"])}。</p>
 </callout>
@@ -555,7 +651,8 @@ def render(data, out_dir):
 <ul>{core_xml}</ul>
 <h1>二、飞书整体使用快照</h1>
 <whiteboard type="svg" path="@board.svg"></whiteboard>
-<h1>三、七模块数据回顾</h1>
+{formal_contract_xml}
+<h1>{"四" if formal else "三"}、七模块数据回顾</h1>
 {"".join(sections)}
 <hr/><callout emoji="📌" background-color="light-gray" border-color="gray">
 <p><b>数据完整性说明：</b>正文包含 {len(FIELD_SPECS)} 个必需字段（会议九项完整）及本次通过字段注册表校验的扩展字段。每项指标均列出来源字段。</p>
@@ -565,7 +662,10 @@ def render(data, out_dir):
     field_sources = {key: "c360_required" for key in FIELD_SPECS}
     field_sources.update({key: item["source"] for key, item in data.get("extra_metrics", {}).items()})
     (out_dir / "manifest.json").write_text(json.dumps({
-        "mode": "c360_aeolus_180d" if enhanced else "c360_snapshot",
+        "mode": "formal_br" if formal else "draft",
+        "formal_contract": formal_contract,
+        "formal_metric_count": 19 if formal else 0,
+        "formal_board_metric_count": sum(len(module["board_metrics"]) for module in modules) if formal else 0,
         "account_id": data["identity_ledger"]["resolved_account"]["account_id"],
         "tenant_id": data["identity_ledger"]["main_tenant"]["tenant_id"],
         "required_fields": list(FIELD_SPECS),
@@ -594,7 +694,9 @@ https://data.bytedance.net/aeolus/pages/dashboard/1014743?appId=1161&sheetId=124
         "generator": "customer-business-review/render-snapshot.py",
         "content_version": CONTENT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "c360_aeolus_180d" if enhanced else "c360_snapshot",
+        "mode": "formal_br" if formal else "draft",
+        "formal_status": "ready" if formal else "draft_only",
+        "formal_contract": formal_contract,
         "field_count": len(set(data.get("metrics", {})) | set(data.get("extra_metrics", {}))),
         "required_field_count": len(FIELD_SPECS),
         "optional_field_count": len(set(data.get("extra_metrics", {})) - set(FIELD_SPECS)),
